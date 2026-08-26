@@ -1,0 +1,92 @@
+# Default analysis configuration for biomech-analyzer.
+# Every value here is a documented, overridable assumption.
+# Items marked "requires_bme_validation" must be confirmed by the
+# Biomedical Engineering team before results are used for research
+# conclusions.
+
+sampling:
+  # Expected nominal sampling rates (Hz). Used only as fallbacks when a file
+  # does not declare its own rate; parsed rates always take precedence.
+  # force_plate_hz was empirically verified against the real SubjectsData
+  # exports (jump-to-jump spacing vs Xsens footContacts: 993-1007 Hz).
+  force_plate_hz: 1000.0
+  emg_hz: 2000.0
+  xsens_hz: 60.0
+
+force_plate:
+  # Column-name aliases used to locate signals in exported CSV files
+  # (case-insensitive substring match, first hit wins).
+  column_aliases:
+    time: ["time", "abs time", "timestamp", "sample time", "t (s)"]
+    fz: ["fz", "force z", "vertical force", "fz1", "grf_z", "fz (n)"]
+    fx: ["fx", "force x", "grf_x"]
+    fy: ["fy", "force y", "grf_y"]
+    cop_x: ["cop x", "copx", "cx", "cop_x"]
+    cop_y: ["cop y", "copy", "cop_y"]
+  # Remove a constant unloaded-plate offset automatically (plates that were
+  # not zeroed before recording read ~40 N when empty in the real data).
+  auto_zero: true
+  lowpass_cutoff_hz: 50.0          # requires_bme_validation
+  filter_order: 4
+  contact_threshold_n: 20.0        # Fz threshold for contact detection; requires_bme_validation
+  bodyweight_stance_window_s: 0.5  # quiet-stance window used to estimate body weight
+
+emg:
+  bandpass_low_hz: 20.0            # requires_bme_validation
+  bandpass_high_hz: 450.0          # requires_bme_validation
+  filter_order: 4
+  rms_window_s: 0.050              # requires_bme_validation
+  onset_threshold_sd: 3.0          # onset = mean_baseline + k*SD; requires_bme_validation
+  onset_baseline_window_s: 0.250
+  pre_activation_window_s: 0.150   # window before initial contact; requires_bme_validation
+  # Channel-name fragments used to group muscles (case-insensitive).
+  muscle_groups:
+    quadriceps: ["vastus", "rectus fem", "rf", "vl", "vm"]
+    hamstrings: ["biceps fem", "semitend", "semimem", "bf", "st"]
+    gastrocnemius: ["gastro", "gm", "gl"]
+    gluteus: ["glut"]
+    tibialis: ["tibialis", "ta"]
+
+xsens:
+  # Joint-name fragments used to locate angles in MVNX files.
+  joint_aliases:
+    knee: ["knee"]
+    hip: ["hip"]
+    ankle: ["ankle"]
+  # Landing analysis window relative to initial contact (seconds).
+  landing_window_pre_s: 0.1
+  landing_window_post_s: 0.5       # requires_bme_validation
+
+synchronization:
+  strategy: "auto"                 # auto | timestamp | event
+  # Maximum tolerated clock offset before timestamp sync is rejected (s).
+  max_timestamp_skew_s: 0.5
+
+events:
+  stabilization_bw_fraction: 0.05  # |Fz - BW| band for TTS; requires_bme_validation
+  stabilization_hold_s: 0.5        # time Fz must stay inside band
+  rfd_window_s: 0.100              # RFD window after initial contact; requires_bme_validation
+  # Flight-phase plausibility bounds. Real recordings contain ~5 jump
+  # repetitions plus long empty-plate periods (SLDJ starts on the box), so a
+  # below-threshold run only counts as flight when it is bounded by contact
+  # on both sides and its duration falls inside these limits.
+  min_flight_s: 0.08
+  max_flight_s: 1.0                # requires_bme_validation
+  # Which repetition to analyze when several jumps exist in one recording:
+  # "longest_flight" (default) or "first". requires_bme_validation
+  repetition_selection: "longest_flight"
+
+report:
+  language: "en"
+  output_dir: "output/reports"
+  include_plots: true
+
+storage:
+  enabled: false
+  sqlite_path: "output/results.sqlite3"
+
+ml:
+  model_dir: "output/models"
+  random_state: 42
+  n_estimators: 200
+  min_participants_warning: 10

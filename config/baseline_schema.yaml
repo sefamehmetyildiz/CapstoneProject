@@ -1,0 +1,22 @@
+# Expected schema of the normative baseline dataset (CSV or XLSX).
+#
+# The Biomedical Engineering team provides one row per (feature, task,
+# condition) with the normative mean and standard deviation computed from
+# the healthy cohort.
+#
+# Required columns (case-insensitive):
+required_columns:
+  - feature        # feature name matching the feature-extraction output
+  - mean
+  - std
+
+# Optional columns:
+optional_columns:
+  - task           # SLVJ | SLDJ | ALL (default ALL)
+  - condition      # baseline | upright | cognitive | ALL (default ALL)
+  - sex            # F | M | ALL (default ALL)
+  - unit
+  - n              # sample size behind the normative value
+
+# Matching precedence when several rows fit a feature:
+#   exact (task, condition, sex) > (task, condition) > task-only > ALL

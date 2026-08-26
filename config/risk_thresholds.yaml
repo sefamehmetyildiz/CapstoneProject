@@ -1,0 +1,91 @@
+# Rule-based risk indicator definitions.
+#
+# EVERY threshold in this file is a PLACEHOLDER pending Biomedical
+# Engineering validation (validation_status: PENDING_BME_VALIDATION).
+# The software surfaces this status verbatim in the GUI and PDF reports.
+#
+# Rule semantics:
+#   feature      - feature name produced by the feature-extraction module
+#   direction    - "above" | "below": which side of the threshold raises risk
+#   threshold    - absolute threshold in the feature's own unit, OR
+#   zscore_threshold - threshold applied to the baseline z-score instead
+#   risk_level   - LOW | MODERATE | HIGH label to assign when triggered
+#   explanation  - human-readable reason shown in reports
+
+indicators:
+  - id: high_impact_landing
+    name: "High impact landing indicator"
+    feature: "peak_vgrf_bw"
+    direction: above
+    zscore_threshold: 1.5
+    risk_level: MODERATE
+    explanation: >
+      Peak vertical ground reaction force is markedly higher than the
+      normative baseline, which has been associated with higher-impact
+      landing strategies.
+    validation_status: PENDING_BME_VALIDATION
+
+  - id: stiff_landing
+    name: "Stiff landing indicator"
+    feature: "peak_knee_flexion_deg"
+    direction: below
+    threshold: 45.0
+    risk_level: MODERATE
+    explanation: >
+      Peak knee flexion during landing is below the configured reference,
+      suggesting a stiff (extended-knee) landing pattern.
+    validation_status: PENDING_BME_VALIDATION
+
+  - id: delayed_preactivation
+    name: "Delayed neuromuscular pre-activation indicator"
+    feature: "preactivation_ratio"
+    direction: below
+    threshold: 0.10
+    risk_level: MODERATE
+    explanation: >
+      Mean normalized muscle activity in the pre-contact window is low,
+      suggesting delayed neuromuscular preparation for landing.
+    validation_status: PENDING_BME_VALIDATION
+
+  - id: stabilization_delay
+    name: "Stabilization delay indicator"
+    feature: "time_to_stabilization_s"
+    direction: above
+    zscore_threshold: 1.5
+    risk_level: MODERATE
+    explanation: >
+      Time to stabilization is longer than the normative baseline range,
+      which may indicate reduced dynamic postural control.
+    validation_status: PENDING_BME_VALIDATION
+
+  - id: low_reactive_strength
+    name: "Low reactive strength indicator"
+    feature: "rsi"
+    direction: below
+    zscore_threshold: -1.5
+    risk_level: LOW
+    explanation: >
+      Reactive strength index is below the normative baseline range.
+    validation_status: PENDING_BME_VALIDATION
+
+  - id: high_cop_excursion
+    name: "Postural control (CoP excursion) indicator"
+    feature: "cop_path_length_m"
+    direction: above
+    zscore_threshold: 1.5
+    risk_level: LOW
+    explanation: >
+      Centre-of-pressure path length after landing exceeds the normative
+      baseline range, which may reflect reduced balance control.
+    validation_status: PENDING_BME_VALIDATION
+
+  - id: low_hq_ratio
+    name: "Hamstring/quadriceps co-activation indicator"
+    feature: "hq_activation_ratio"
+    direction: below
+    threshold: 0.5
+    risk_level: MODERATE
+    explanation: >
+      Hamstring-to-quadriceps activation ratio during landing is below the
+      configured reference, a pattern discussed in ACL-risk literature.
+    validation_status: PENDING_BME_VALIDATION

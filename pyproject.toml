@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biomech-analyzer"
+version = "0.1.0"
+description = "Offline multimodal biomechanical analysis and reporting platform for single-leg jump performance (capstone project, decision-support only)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Sefa Mehmet Yildiz" },
+    { name = "Ahmet Tarik Ozben" },
+]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "h5py>=3.8",
+    "lxml>=4.9",
+    "scikit-learn>=1.3",
+    "matplotlib>=3.7",
+    "reportlab>=4.0",
+    "PySide6>=6.5",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "coverage>=7.3",
+    "ruff>=0.4",
+    "mypy>=1.8",
+    "pyinstaller>=6.0",
+]
+
+[project.scripts]
+biomech-analyzer = "biomech_analyzer.cli:main"
+biomech-analyzer-gui = "biomech_analyzer.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = ["slow: long-running end-to-end tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+
+[tool.coverage.run]
+source = ["src/biomech_analyzer"]
+omit = ["src/biomech_analyzer/app/*", "src/biomech_analyzer/main.py"]
