@@ -16,3 +16,6 @@ output/
 *.db
 data/mock/
 !data/mock/.gitkeep
+
+# PyInstaller auto-generated spec (build_exe.py recreates it)
+*.spec
