@@ -27,6 +27,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Image,
+    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -58,7 +59,9 @@ RULE = "#d5dde8"
 MUTED = "#6b7280"
 
 CONTENT_W = 17.8 * cm
-PLOT_GRID_W = 8.6 * cm
+# Usable height of the dedicated force–time curve page (frame height minus
+# the section heading and a small safety margin).
+PLOT_PAGE_H = 24.6 * cm
 
 # closer_to → risk level used for cell colouring in the profile matrix
 _CLOSER_LEVEL = {
@@ -387,27 +390,34 @@ def _indicator_table(result: ParticipantResult, lang: str) -> Table | None:
 
 
 def _plot_grid(result: ParticipantResult, plot_dir: Path) -> Table | None:
-    """Fz/event plots for all trials, two per row."""
-    images: list[Image] = []
+    """Fz/event plots for all trials, stacked to fill exactly one page."""
+    from reportlab.lib.utils import ImageReader
+
+    paths: list[Path] = []
     for trial in result.trials:
         if trial.data is None:
             continue
         img_path = plots.plot_fz_with_events(trial.data, trial, plot_dir)
         if img_path is not None:
-            images.append(_scaled_image(img_path, PLOT_GRID_W))
-    if not images:
+            paths.append(img_path)
+    if not paths:
         return None
-    rows = [images[i:i + 2] for i in range(0, len(images), 2)]
-    if len(rows[-1]) == 1:
-        rows[-1].append("")
-    t = Table(rows, colWidths=[CONTENT_W / 2] * 2)
+    row_h = PLOT_PAGE_H / len(paths)
+    rows: list[list] = []
+    for path in paths:
+        iw, ih = ImageReader(str(path)).getSize()
+        width = min(CONTENT_W, (row_h - 0.2 * cm) * iw / ih)
+        img = Image(str(path), width=width, height=width * ih / iw)
+        img.hAlign = "CENTER"
+        rows.append([img])
+    t = Table(rows, colWidths=[CONTENT_W], rowHeights=[row_h] * len(rows))
     t.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
             ]
@@ -539,16 +549,17 @@ def generate_pdf_report(
                 rows.append([t.get("trial_id", "-"), t.get("prediction", "-"), prob])
             story.append(_table(rows, [4.0 * cm, 4.0 * cm, 9.8 * cm]))
 
-        # ---- Fz plots, two per row ---------------------------------------
+        # ---- single-line footnote (before the full-page plot section) ----
+        story.append(Spacer(1, 12))
+        story.append(Paragraph(tr("report.pending_note", lang), styles["footnote"]))
+
+        # ---- Fz plots on their own full page -----------------------------
         if include_plots:
             grid = _plot_grid(result, plot_dir)
             if grid is not None:
+                story.append(PageBreak())
                 story.append(Paragraph(tr("report.plots", lang), styles["h2"]))
                 story.append(grid)
-
-        # ---- single-line footnote ----------------------------------------
-        story.append(Spacer(1, 12))
-        story.append(Paragraph(tr("report.pending_note", lang), styles["footnote"]))
 
         try:
             decorate = _page_decorator(result, lang)
