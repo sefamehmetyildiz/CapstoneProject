@@ -22,6 +22,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "tr": "Biyomekanik Risk Raporu — Katılımcı",
     },
     "report.timestamp": {"en": "Analysis timestamp", "tr": "Analiz zamanı"},
+    "report.participant": {"en": "Participant", "tr": "Katılımcı"},
+    "report.page": {"en": "Page", "tr": "Sayfa"},
+    "report.trial_overview": {"en": "Findings summary", "tr": "Bulgular özeti"},
+    "report.triggered_count": {
+        "en": "Triggered indicators",
+        "tr": "Tetiklenen gösterge",
+    },
     "report.folder": {"en": "Input folder", "tr": "Girdi klasörü"},
     "report.software": {"en": "Software", "tr": "Yazılım"},
     "report.disclaimer_title": {"en": "Disclaimer", "tr": "Yasal Uyarı"},
