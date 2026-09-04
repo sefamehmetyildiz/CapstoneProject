@@ -163,6 +163,8 @@ class EventSet:
     body_weight_n: float | None = None
     flight_time_s: float | None = None
     contact_time_s: float | None = None
+    #: Start of the contiguous ground contact preceding take-off.
+    contact_start_s: float | None = None
     warnings: list[str] = field(default_factory=list)
 
 
@@ -187,6 +189,9 @@ class TrialFeatures:
     condition: Condition
     features: dict[str, FeatureValue] = field(default_factory=dict)
     events: EventSet | None = None
+    #: Stretch-shortening cycle category: "good" | "moderate" | "poor" | None
+    #: (simplified Pedley/Read criteria; PENDING_BME_VALIDATION).
+    ssc_category: str | None = None
     warnings: list[str] = field(default_factory=list)
 
     def value(self, name: str) -> float | None:
@@ -225,6 +230,26 @@ class RiskIndicatorResult:
     risk_level: RiskLevel
     explanation: str
     validation_status: str
+    name_tr: str = ""
+    explanation_tr: str = ""
+
+
+@dataclass
+class ProfileComparison:
+    """Comparison of one feature against literature Control/ACLR profiles."""
+
+    feature: str
+    region: str  # knee | hip | ankle | global
+    unit: str
+    value: float
+    control_mean: float
+    control_sd: float
+    z_control: float
+    aclr_mean: float
+    aclr_sd: float
+    z_aclr: float
+    closer_to: str  # "control" | "aclr" | "between"
+    source: str  # citation key into reference_profiles.yaml sources
 
 
 @dataclass
@@ -237,6 +262,8 @@ class TrialResult:
     features: TrialFeatures
     baseline_comparisons: list[BaselineComparison] = field(default_factory=list)
     risk_indicators: list[RiskIndicatorResult] = field(default_factory=list)
+    profile_comparisons: list[ProfileComparison] = field(default_factory=list)
+    overall_risk: RiskLevel = RiskLevel.NONE
     sync: SyncInfo | None = None
     warnings: list[str] = field(default_factory=list)
     #: Parsed/preprocessed signals kept for plotting; not persisted to storage.
@@ -251,6 +278,7 @@ class ParticipantResult:
     folder: Path
     validation: FolderValidationReport
     trials: list[TrialResult] = field(default_factory=list)
+    overall_risk: RiskLevel = RiskLevel.NONE
     ml_output: dict[str, Any] | None = None
     analysis_timestamp: str = ""
     report_path: Path | None = None

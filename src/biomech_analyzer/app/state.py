@@ -22,6 +22,14 @@ class AppState:
     model_path: Path | None = None
     validation: FolderValidationReport | None = None
     result: ParticipantResult | None = None
+    #: PDF report language: "en" or "tr".
+    report_language: str = "en"
+    #: Row id of the auto-saved analysis in the local SQLite database.
+    analysis_id: int | None = None
+
+    @property
+    def db_path(self) -> Path:
+        return Path(self.config.get("storage.sqlite_path", "output/results.sqlite3"))
 
     def rebuild_config(self) -> None:
         """Re-load configuration applying the Advanced Settings overrides."""

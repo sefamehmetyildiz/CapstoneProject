@@ -9,6 +9,7 @@ param(
     [string]$DataDir = "SubjectsData",
     [string]$Baseline = "",
     [string]$OutDir = "output\reports",
+    [ValidateSet("en", "tr")][string]$Language = "en",
     [switch]$SaveDb
 )
 
@@ -22,7 +23,7 @@ $folders = Get-ChildItem -Path (Join-Path $repo $DataDir) -Directory |
 $ok = 0; $failed = 0
 foreach ($folder in $folders) {
     Write-Host "=== $($folder.Name) ===" -ForegroundColor Cyan
-    $cliArgs = @("-m", "biomech_analyzer.cli", "report", $folder.FullName, "--out", $OutDir)
+    $cliArgs = @("-m", "biomech_analyzer.cli", "report", $folder.FullName, "--out", $OutDir, "--language", $Language)
     if ($Baseline) { $cliArgs += @("--baseline", $Baseline) }
     if ($SaveDb)   { $cliArgs += "--save-db" }
     $env:PYTHONPATH = Join-Path $repo "src"

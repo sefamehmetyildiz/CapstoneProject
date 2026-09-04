@@ -25,6 +25,16 @@ from biomech_analyzer.core.models import (
     TrialResult,
 )
 from biomech_analyzer.diagnostics.baseline_comparison import compare_with_baseline
+from biomech_analyzer.diagnostics.overall_risk import (
+    load_overall_config,
+    participant_risk_level,
+    trial_risk_level,
+)
+from biomech_analyzer.diagnostics.profile_comparison import (
+    ReferenceProfiles,
+    compare_with_profiles,
+    load_reference_profiles,
+)
 from biomech_analyzer.diagnostics.risk_scoring import evaluate_risk_rules
 from biomech_analyzer.io.baseline_loader import BaselineDataset, load_baseline
 from biomech_analyzer.io.emg_mat_parser import parse_emg_mat
@@ -50,6 +60,24 @@ def _noop(_msg: str) -> None:
     return None
 
 
+def _load_participants_meta() -> dict:
+    """Load participant anthropometrics from config/participants.yaml."""
+    import yaml
+
+    from biomech_analyzer.core.config import _config_root
+
+    path = _config_root() / "config" / "participants.yaml"
+    if not path.is_file():
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        return dict(data.get("participants") or {})
+    except Exception as exc:
+        log.warning("participants.yaml could not be read: %s", exc)
+        return {}
+
+
 class AnalysisPipeline:
     """Runs the full offline analysis for one participant folder."""
 
@@ -59,12 +87,22 @@ class AnalysisPipeline:
         baseline: BaselineDataset | None = None,
         baseline_path: Path | None = None,
         risk_rules: list | None = None,
+        reference_profiles: ReferenceProfiles | None = None,
     ) -> None:
         self.config = config
         self.baseline = baseline
         if self.baseline is None and baseline_path is not None:
             self.baseline = load_baseline(baseline_path)
         self.risk_rules = risk_rules if risk_rules is not None else load_risk_rules()
+        self.overall_cfg = load_overall_config()
+        self.profiles: ReferenceProfiles | None = reference_profiles
+        if self.profiles is None:
+            try:
+                self.profiles = load_reference_profiles()
+            except Exception as exc:  # missing file must not block analysis
+                log.warning("Reference profiles unavailable: %s", exc)
+        self.participants_meta = _load_participants_meta()
+        self._current_participant_id: str = ""
 
     # ------------------------------------------------------------------ API
 
@@ -90,6 +128,7 @@ class AnalysisPipeline:
             result.warnings.extend(validation.errors)
             return result
 
+        self._current_participant_id = validation.participant_id
         for package in sorted(validation.trials, key=lambda p: p.trial_id):
             if Modality.FORCE_PLATE not in package.files:
                 result.warnings.append(
@@ -111,6 +150,9 @@ class AnalysisPipeline:
 
         if not result.trials:
             result.warnings.append("No trial could be analyzed.")
+        result.overall_risk = participant_risk_level(
+            [t.overall_risk for t in result.trials]
+        )
         progress("Analysis complete.")
         return result
 
@@ -152,7 +194,11 @@ class AnalysisPipeline:
             trial.warnings.append("Xsens file missing; kinematic features unavailable.")
 
         trial.sync = synchronize_trial(trial, emg_env, self.config)
-        events = detect_events(trial.force_plate, self.config)
+        meta = self.participants_meta.get(self._current_participant_id) or {}
+        known_bw = None
+        if isinstance(meta, dict) and meta.get("mass_kg"):
+            known_bw = float(meta["mass_kg"]) * 9.81
+        events = detect_events(trial.force_plate, self.config, known_body_weight_n=known_bw)
         features = extract_features(trial, emg_env, events, self.config)
 
         # Collect stream-level warnings into the feature set for reporting.
@@ -168,6 +214,9 @@ class AnalysisPipeline:
             compare_with_baseline(features, self.baseline) if self.baseline else []
         )
         indicators = evaluate_risk_rules(features, comparisons, self.risk_rules)
+        profile_comps = (
+            compare_with_profiles(features, self.profiles) if self.profiles else []
+        )
 
         return TrialResult(
             trial_id=package.trial_id,
@@ -176,6 +225,8 @@ class AnalysisPipeline:
             features=features,
             baseline_comparisons=comparisons,
             risk_indicators=indicators,
+            profile_comparisons=profile_comps,
+            overall_risk=trial_risk_level(indicators, self.overall_cfg),
             sync=trial.sync,
             warnings=list(features.warnings),
             data=trial,

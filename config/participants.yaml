@@ -1,0 +1,27 @@
+# Participant anthropometrics provided by the Biomedical Engineering team.
+# Keyed by ANONYMOUS participant ID (as derived by the folder scanner).
+#
+# mass_kg is used as a fallback body-weight estimate (BW = mass * 9.81 N)
+# when no quiet-stance or stable-contact segment allows estimating body
+# weight from the force plate, and as a consistency check otherwise.
+#
+# S14 has no anthropometrics yet. Additional volunteers (Sadra 198cm/98kg,
+# Kimiya 164cm/56kg, Elif 178cm/54kg) can be added once their data folders
+# and anonymous IDs exist.
+
+participants:
+  S01: {mass_kg: 68, height_cm: 174}
+  S02: {mass_kg: 75, height_cm: 178}
+  S03: {mass_kg: 56, height_cm: 168}
+  S04: {mass_kg: 80, height_cm: 175}
+  S05: {mass_kg: 88, height_cm: 184}
+  S06: {mass_kg: 56, height_cm: 160}
+  S07: {mass_kg: 70, height_cm: 168}
+  S08: {mass_kg: 70, height_cm: 174}
+  S09: {mass_kg: 70, height_cm: 173}
+  S10: {mass_kg: 56, height_cm: 163}
+  S11: {mass_kg: 82, height_cm: 180}
+  S12: {mass_kg: 92, height_cm: 181}
+  S13: {mass_kg: 54, height_cm: 167}
+  S15: {mass_kg: 72, height_cm: 172}
+  S16: {mass_kg: 99, height_cm: 187}

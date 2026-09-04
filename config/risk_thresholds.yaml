@@ -3,6 +3,8 @@
 # EVERY threshold in this file is a PLACEHOLDER pending Biomedical
 # Engineering validation (validation_status: PENDING_BME_VALIDATION).
 # The software surfaces this status verbatim in the GUI and PDF reports.
+# Literature-derived thresholds cite their source; see
+# config/reference_profiles.yaml for full citations.
 #
 # Rule semantics:
 #   feature      - feature name produced by the feature-extraction module
@@ -10,11 +12,12 @@
 #   threshold    - absolute threshold in the feature's own unit, OR
 #   zscore_threshold - threshold applied to the baseline z-score instead
 #   risk_level   - LOW | MODERATE | HIGH label to assign when triggered
-#   explanation  - human-readable reason shown in reports
+#   name_tr / explanation_tr - Turkish strings for the Turkish PDF report
 
 indicators:
   - id: high_impact_landing
     name: "High impact landing indicator"
+    name_tr: "Yüksek darbeli iniş göstergesi"
     feature: "peak_vgrf_bw"
     direction: above
     zscore_threshold: 1.5
@@ -23,10 +26,15 @@ indicators:
       Peak vertical ground reaction force is markedly higher than the
       normative baseline, which has been associated with higher-impact
       landing strategies.
+    explanation_tr: >
+      Maksimum dikey yer tepki kuvveti normatif referansın belirgin
+      üzerinde; bu durum yüksek darbeli iniş stratejileriyle
+      ilişkilendirilmiştir.
     validation_status: PENDING_BME_VALIDATION
 
   - id: stiff_landing
     name: "Stiff landing indicator"
+    name_tr: "Sert iniş göstergesi"
     feature: "peak_knee_flexion_deg"
     direction: below
     threshold: 45.0
@@ -34,10 +42,14 @@ indicators:
     explanation: >
       Peak knee flexion during landing is below the configured reference,
       suggesting a stiff (extended-knee) landing pattern.
+    explanation_tr: >
+      İniş sırasındaki maksimum diz fleksiyonu referansın altında; bu,
+      sert (dizi az bükerek) iniş paternine işaret eder.
     validation_status: PENDING_BME_VALIDATION
 
   - id: delayed_preactivation
     name: "Delayed neuromuscular pre-activation indicator"
+    name_tr: "Gecikmiş nöromüsküler ön-aktivasyon göstergesi"
     feature: "preactivation_ratio"
     direction: below
     threshold: 0.10
@@ -45,10 +57,14 @@ indicators:
     explanation: >
       Mean normalized muscle activity in the pre-contact window is low,
       suggesting delayed neuromuscular preparation for landing.
+    explanation_tr: >
+      Temas öncesi penceredeki ortalama kas aktivitesi düşük; inişe
+      nöromüsküler hazırlığın geciktiğini düşündürür.
     validation_status: PENDING_BME_VALIDATION
 
   - id: stabilization_delay
     name: "Stabilization delay indicator"
+    name_tr: "Stabilizasyon gecikmesi göstergesi"
     feature: "time_to_stabilization_s"
     direction: above
     zscore_threshold: 1.5
@@ -56,20 +72,27 @@ indicators:
     explanation: >
       Time to stabilization is longer than the normative baseline range,
       which may indicate reduced dynamic postural control.
+    explanation_tr: >
+      Stabilizasyon süresi normatif aralığın üzerinde; azalmış dinamik
+      postural kontrole işaret edebilir.
     validation_status: PENDING_BME_VALIDATION
 
   - id: low_reactive_strength
     name: "Low reactive strength indicator"
+    name_tr: "Düşük reaktif kuvvet göstergesi"
     feature: "rsi"
     direction: below
     zscore_threshold: -1.5
     risk_level: LOW
     explanation: >
       Reactive strength index is below the normative baseline range.
+    explanation_tr: >
+      Reaktif kuvvet indeksi normatif aralığın altında.
     validation_status: PENDING_BME_VALIDATION
 
   - id: high_cop_excursion
     name: "Postural control (CoP excursion) indicator"
+    name_tr: "Postural kontrol (CoP yolu) göstergesi"
     feature: "cop_path_length_m"
     direction: above
     zscore_threshold: 1.5
@@ -77,10 +100,14 @@ indicators:
     explanation: >
       Centre-of-pressure path length after landing exceeds the normative
       baseline range, which may reflect reduced balance control.
+    explanation_tr: >
+      İniş sonrası basınç merkezi yolu normatif aralığı aşıyor; azalmış
+      denge kontrolünü yansıtabilir.
     validation_status: PENDING_BME_VALIDATION
 
   - id: low_hq_ratio
     name: "Hamstring/quadriceps co-activation indicator"
+    name_tr: "Hamstring/quadriseps eş-kasılma göstergesi"
     feature: "hq_activation_ratio"
     direction: below
     threshold: 0.5
@@ -88,4 +115,72 @@ indicators:
     explanation: >
       Hamstring-to-quadriceps activation ratio during landing is below the
       configured reference, a pattern discussed in ACL-risk literature.
+    explanation_tr: >
+      İniş sırasındaki hamstring/quadriseps aktivasyon oranı referansın
+      altında; ÖÇB risk literatüründe tartışılan bir paterndir.
     validation_status: PENDING_BME_VALIDATION
+
+  # ---- Literature-derived reactive-contact indicators (Read 2022) --------
+  - id: prolonged_contact
+    task: SLDJ
+    name: "Prolonged reactive contact indicator"
+    name_tr: "Uzamış reaktif temas süresi göstergesi"
+    feature: "contact_time_s"
+    direction: above
+    threshold: 0.37
+    risk_level: MODERATE
+    explanation: >
+      Ground contact time before take-off exceeds the healthy control
+      range (0.31 +/- 0.03 s; Read 2022), a strategy of lengthening
+      contact to compensate for reduced stretch-shortening cycle function.
+    explanation_tr: >
+      Kalkış öncesi yer temas süresi sağlıklı kontrol aralığının
+      (0.31 +/- 0.03 s; Read 2022) üzerinde; bu, azalmış gerilme-kısalma
+      döngüsü işlevini telafi etmek için teması uzatma stratejisidir.
+    validation_status: PENDING_BME_VALIDATION
+
+  - id: early_impact_peak
+    task: SLDJ
+    name: "Early impact peak indicator"
+    name_tr: "Erken darbe piki göstergesi"
+    feature: "peak_force_time_pct"
+    direction: below
+    threshold: 20.0
+    risk_level: MODERATE
+    explanation: >
+      Peak landing force occurs within the first 20% of ground contact
+      (controls: ~32% of contact; ACLR limbs: ~19%; Read 2022), indicating
+      an abrupt impact and poor force attenuation.
+    explanation_tr: >
+      Maksimum iniş kuvvetine yer temasının ilk %20'lik diliminde
+      ulaşılıyor (kontrol: ~%32; ÖÇB'li bacak: ~%19; Read 2022); ani darbe
+      ve yetersiz kuvvet sönümlemeye işaret eder.
+    validation_status: PENDING_BME_VALIDATION
+
+  - id: low_rsi_absolute
+    task: SLDJ
+    name: "Reduced reactive strength (literature reference)"
+    name_tr: "Azalmış reaktif kuvvet (literatür referansı)"
+    feature: "rsi"
+    direction: below
+    threshold: 0.42
+    risk_level: LOW
+    explanation: >
+      Reactive strength index below control mean - 1.5 SD
+      (controls 0.57 +/- 0.10; ACLR limbs 0.34 +/- 0.08; Read 2022).
+    explanation_tr: >
+      Reaktif kuvvet indeksi kontrol ortalaması - 1.5 SS altında
+      (kontrol 0.57 +/- 0.10; ÖÇB'li bacak 0.34 +/- 0.08; Read 2022).
+    validation_status: PENDING_BME_VALIDATION
+
+# ---- Overall risk aggregation (decision-support colour coding) ----------
+# Triggered indicators are scored (HIGH=3, MODERATE=2, LOW=1) and summed
+# per trial; the participant level takes the worst trial.
+#   score == 0                     -> LOW      (green)
+#   moderate_min <= score < high_min -> MODERATE (orange)
+#   score >= high_min              -> HIGH     (red)
+# PENDING_BME_VALIDATION; purely a presentation aid, not a diagnosis.
+overall:
+  weights: {HIGH: 3, MODERATE: 2, LOW: 1}
+  moderate_min_score: 1
+  high_min_score: 5

@@ -24,8 +24,12 @@ def test_main_window_builds(qapp):
     from biomech_analyzer.app.gui_main import MainWindow
 
     win = MainWindow()
-    assert win.tabs.count() == 4
+    assert win.tabs.count() == 5  # workflow (3) + History + Advanced
     assert "decision-support" in win.windowTitle()
+    # report language selector offers English and Turkish
+    combo = win.results_screen.language_combo
+    values = {combo.itemData(i) for i in range(combo.count())}
+    assert values == {"en", "tr"}
 
 
 def test_folder_validation_flow(qapp, p001: Path):
@@ -55,3 +59,28 @@ def test_results_refresh_with_result(qapp, p001: Path, config, mock_data_dir: Pa
     win.results_screen.refresh()
     assert win.results_screen.summary_table.rowCount() == 6
     assert win.results_screen.features_table.rowCount() > 0
+    assert win.results_screen.profile_table.rowCount() > 0
+    assert "risk level" in win.results_screen.risk_badge.text()
+
+
+def test_history_screen_with_populated_db(qapp, p001: Path, config, tmp_path: Path):
+    from biomech_analyzer.app.gui_main import MainWindow
+    from biomech_analyzer.core.config import Config
+    from biomech_analyzer.core.pipeline import AnalysisPipeline
+    from biomech_analyzer.storage.sqlite_repository import SqliteRepository
+
+    win = MainWindow()
+    db = tmp_path / "hist.sqlite3"
+    win.state.config = Config(
+        {**config.as_dict(), "storage": {"sqlite_path": str(db)}}
+    )
+    # empty database path -> friendly message, no crash
+    win.history_screen.refresh()
+    assert win.history_screen.table.rowCount() == 0
+
+    result = AnalysisPipeline(config).analyze(p001)
+    with SqliteRepository(db) as repo:
+        repo.save_participant_result(result)
+    win.history_screen.refresh()
+    assert win.history_screen.table.rowCount() == 1
+    assert win.history_screen.table.item(0, 1).text() == "P001"

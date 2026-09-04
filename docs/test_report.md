@@ -1,13 +1,13 @@
 # Test Report
 
-Date: 2026-08-26 (updated after real-data validation) · Python 3.10.12 ·
-Windows 11 · biomech-analyzer v0.1.0
+Date: 2026-09-05 (updated after advisor-driven feature round) ·
+Python 3.10.12 · Windows 11 · biomech-analyzer v0.1.0
 
 ## Summary
 
 | Gate | Result |
 |---|---|
-| `pytest` | **96 passed, 0 failed** |
+| `pytest` | **114 passed, 0 failed** |
 | `coverage report` | **90 %** over `src/biomech_analyzer` (GUI + entry points excluded by config) |
 | `ruff check .` | **All checks passed** (rules: E, F, W, I, UP, B) |
 | `mypy src` | **No issues in 46 source files** |
@@ -43,6 +43,16 @@ Windows 11 · biomech-analyzer v0.1.0
 2. `np.trapz` deprecation (NumPy ≥ 2) — migrated to `np.trapezoid`.
 3. ReportLab `Image(width=…, height=None)` distorts aspect ratio — replaced
    with proportional scaling via `ImageReader`.
+
+## Advisor-driven feature round (2026-09)
+
+New test modules cover the September feature set:
+
+| Module | Focus |
+|---|---|
+| test_profiles_and_overall_risk (11) | literature profile lookup/scoping, Control-vs-ACLR mapping, region status, task-scoped rules, overall risk aggregation, Turkish PDF generation (DejaVu fonts), i18n strings, anthropometric body-weight fallback, SSC categorization on SLDJ only |
+| test_history_and_retrain (6) | overall-risk column + migration of pre-upgrade databases, report-path updates, latest-analysis deduplication, condition-classifier retraining from stored history (LOSO, honest exploratory warnings), empty-history error |
+| test_gui_smoke (extended) | 5 tabs, EN/TR language selector, risk badge, profile table, History screen with empty and populated databases |
 
 ## Real-data validation sweep (SubjectsData, 16 subjects)
 

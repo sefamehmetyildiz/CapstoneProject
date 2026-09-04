@@ -1,7 +1,8 @@
-"""Standardized English PDF report generation (one per participant ID).
+"""Standardized bilingual (EN/TR) PDF report generation.
 
-Built with ReportLab (pure Python — no native GTK/Pango dependencies,
-which keeps PyInstaller packaging on Windows simple). The report presents
+Built with ReportLab. The DejaVu Sans fonts bundled with matplotlib are
+registered so Turkish characters render correctly. Risk levels colour the
+report (high = red, moderate = orange, low = green). The report presents
 decision-support findings only and carries an explicit disclaimer.
 """
 
@@ -11,10 +12,13 @@ import logging
 import tempfile
 from pathlib import Path
 
+import matplotlib
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Image,
     PageBreak,
@@ -25,36 +29,71 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from biomech_analyzer import DISCLAIMER, __version__
-from biomech_analyzer.core.constants import VALIDATION_PENDING
+from biomech_analyzer import __version__
+from biomech_analyzer.core.constants import (
+    RISK_BG_COLORS,
+    RISK_COLORS,
+    VALIDATION_PENDING,
+    Modality,
+    RiskLevel,
+)
 from biomech_analyzer.core.exceptions import ReportError
 from biomech_analyzer.core.models import ParticipantResult, TrialResult
+from biomech_analyzer.diagnostics.profile_comparison import (
+    REGIONS,
+    load_reference_profiles,
+    region_status,
+)
 from biomech_analyzer.reporting import plots
+from biomech_analyzer.reporting.i18n import risk_label, tr, tr_interpretation
 from biomech_analyzer.utils.file_utils import ensure_dir
 
 log = logging.getLogger(__name__)
 
-_TITLE = (
-    "Multimodal Biomechanical Data Acquisition and Automated Analysis of "
-    "Single-Leg Jump Performance"
-)
+_FONTS_REGISTERED = False
+
+
+def _register_fonts() -> None:
+    """Register DejaVu Sans (bundled with matplotlib) for Turkish glyphs."""
+    global _FONTS_REGISTERED
+    if _FONTS_REGISTERED:
+        return
+    ttf_dir = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
+    pdfmetrics.registerFont(TTFont("DejaVu", str(ttf_dir / "DejaVuSans.ttf")))
+    pdfmetrics.registerFont(TTFont("DejaVu-Bold", str(ttf_dir / "DejaVuSans-Bold.ttf")))
+    pdfmetrics.registerFontFamily(
+        "DejaVu", normal="DejaVu", bold="DejaVu-Bold",
+        italic="DejaVu", boldItalic="DejaVu-Bold",
+    )
+    _FONTS_REGISTERED = True
 
 
 def _styles() -> dict[str, ParagraphStyle]:
-    base = getSampleStyleSheet()
+    base = ParagraphStyle("base", fontName="DejaVu", fontSize=8.5, leading=11)
     return {
-        "title": ParagraphStyle("title", parent=base["Title"], fontSize=14, leading=18),
-        "h1": ParagraphStyle("h1", parent=base["Heading1"], fontSize=12, spaceBefore=10),
-        "h2": ParagraphStyle("h2", parent=base["Heading2"], fontSize=10.5, spaceBefore=8),
-        "body": ParagraphStyle("body", parent=base["BodyText"], fontSize=8.5, leading=11),
-        "small": ParagraphStyle("small", parent=base["BodyText"], fontSize=7.5, leading=9.5,
-                                textColor=colors.HexColor("#444444")),
-        "warn": ParagraphStyle("warn", parent=base["BodyText"], fontSize=8,
-                               textColor=colors.HexColor("#8a5a00")),
+        "title": ParagraphStyle(
+            "title", parent=base, fontName="DejaVu-Bold", fontSize=13, leading=17,
+            alignment=1, spaceAfter=4,
+        ),
+        "h1": ParagraphStyle(
+            "h1", parent=base, fontName="DejaVu-Bold", fontSize=11.5, leading=15,
+            spaceBefore=10, spaceAfter=3, textColor=colors.HexColor("#1a3b5d"),
+        ),
+        "h2": ParagraphStyle(
+            "h2", parent=base, fontName="DejaVu-Bold", fontSize=9.5, leading=12,
+            spaceBefore=8, spaceAfter=2, textColor=colors.HexColor("#2e4d6b"),
+        ),
+        "body": base,
+        "small": ParagraphStyle(
+            "small", parent=base, fontSize=7.5, leading=9.5,
+            textColor=colors.HexColor("#444444"),
+        ),
+        "warn": ParagraphStyle(
+            "warn", parent=base, fontSize=8, textColor=colors.HexColor("#8a5a00"),
+        ),
         "disclaimer": ParagraphStyle(
-            "disclaimer", parent=base["BodyText"], fontSize=8.5, leading=11,
-            borderColor=colors.HexColor("#8a5a00"), borderWidth=1, borderPadding=6,
-            backColor=colors.HexColor("#fff6e5"),
+            "disclaimer", parent=base, borderColor=colors.HexColor("#8a5a00"),
+            borderWidth=1, borderPadding=6, backColor=colors.HexColor("#fff6e5"),
         ),
     }
 
@@ -66,11 +105,32 @@ def _table(data: list[list], col_widths: list[float] | None = None) -> Table:
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef7")),
                 ("FONTSIZE", (0, 0), (-1, -1), 7.5),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 0), (-1, -1), "DejaVu"),
+                ("FONTNAME", (0, 0), (-1, 0), "DejaVu-Bold"),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#b0b0b0")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1),
                  [colors.white, colors.HexColor("#f7f9fc")]),
+            ]
+        )
+    )
+    return t
+
+
+def _risk_banner(text: str, level: RiskLevel, width: float) -> Table:
+    """A single-cell colour-coded banner for risk levels."""
+    style = ParagraphStyle(
+        "banner", fontName="DejaVu-Bold", fontSize=11, leading=14,
+        textColor=colors.HexColor(RISK_COLORS[level]), alignment=1,
+    )
+    t = Table([[Paragraph(text, style)]], colWidths=[width])
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(RISK_BG_COLORS[level])),
+                ("BOX", (0, 0), (-1, -1), 1.2, colors.HexColor(RISK_COLORS[level])),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
             ]
         )
     )
@@ -82,83 +142,157 @@ def _fmt(value: float | None, digits: int = 3) -> str:
 
 
 def _scaled_image(path: Path, width: float) -> Image:
-    """ReportLab Image scaled to ``width`` with preserved aspect ratio."""
     from reportlab.lib.utils import ImageReader
 
     iw, ih = ImageReader(str(path)).getSize()
     return Image(str(path), width=width, height=width * ih / iw)
 
 
-def _trial_story(trial: TrialResult, styles: dict, plot_dir: Path, include_plots: bool) -> list:
-    story: list = [Paragraph(f"Trial {trial.trial_id}", styles["h1"])]
+def _risk_cell_style(rows: list[RiskLevel], header_offset: int = 1) -> list[tuple]:
+    """Colour the 'level' column cells of a table by risk level."""
+    cmds: list[tuple] = []
+    for i, level in enumerate(rows):
+        cmds.append(
+            ("TEXTCOLOR", (-1, i + header_offset), (-1, i + header_offset),
+             colors.HexColor(RISK_COLORS[level]))
+        )
+        cmds.append(
+            ("BACKGROUND", (-1, i + header_offset), (-1, i + header_offset),
+             colors.HexColor(RISK_BG_COLORS[level]))
+        )
+        cmds.append(
+            ("FONTNAME", (-1, i + header_offset), (-1, i + header_offset),
+             "DejaVu-Bold")
+        )
+    return cmds
+
+
+def _trial_story(
+    trial: TrialResult, styles: dict, plot_dir: Path, include_plots: bool, lang: str
+) -> list:
+    story: list = [
+        Paragraph(
+            f"{tr('report.trial', lang)} {trial.trial_id} — "
+            f"{tr('report.level', lang)}: "
+            f"<font color='{RISK_COLORS[trial.overall_risk]}'>"
+            f"{risk_label(trial.overall_risk, lang)}</font>",
+            styles["h1"],
+        )
+    ]
 
     ev = trial.features.events
     if ev is not None:
-        story.append(Paragraph("Event detection", styles["h2"]))
+        story.append(Paragraph(tr("report.events", lang), styles["h2"]))
+        ssc = trial.features.ssc_category
+        ssc_text = tr(f"ssc.{ssc}", lang) if ssc else tr("ssc.unknown", lang)
         story.append(
             _table(
                 [
-                    ["Event", "Time (s)"],
-                    ["Take-off", _fmt(ev.takeoff_s)],
-                    ["Initial contact", _fmt(ev.initial_contact_s)],
-                    ["Peak landing force", _fmt(ev.peak_force_s)],
-                    ["Stabilization", _fmt(ev.stabilization_s)],
+                    [tr("report.event", lang), tr("report.time_s", lang)],
+                    [tr("report.takeoff", lang), _fmt(ev.takeoff_s)],
+                    [tr("report.initial_contact", lang), _fmt(ev.initial_contact_s)],
+                    [tr("report.peak_force", lang), _fmt(ev.peak_force_s)],
+                    [tr("report.stabilization", lang), _fmt(ev.stabilization_s)],
+                    [tr("report.ssc", lang), ssc_text],
                 ],
-                [5 * cm, 4 * cm],
+                [7 * cm, 5 * cm],
             )
         )
 
     if trial.sync is not None:
-        story.append(Paragraph("Synchronization", styles["h2"]))
+        story.append(Paragraph(tr("report.sync", lang), styles["h2"]))
         story.append(
             Paragraph(
-                f"Strategy: <b>{trial.sync.strategy}</b>. " + " ".join(trial.sync.notes),
+                f"{tr('report.sync_strategy', lang)}: <b>{trial.sync.strategy}</b>. "
+                + " ".join(trial.sync.notes),
                 styles["small"],
             )
         )
 
     if trial.features.features:
-        story.append(Paragraph("Extracted biomechanical features", styles["h2"]))
-        rows = [["Feature", "Value", "Unit", "Source", "Validation"]]
+        story.append(Paragraph(tr("report.features", lang), styles["h2"]))
+        rows = [[
+            tr("report.feature", lang), tr("report.value", lang),
+            tr("report.unit", lang), tr("report.source", lang),
+            tr("report.validation", lang),
+        ]]
         for fv in trial.features.features.values():
             rows.append(
-                [fv.name, f"{fv.value:.4g}", fv.unit, fv.modality.value, fv.validation_status]
+                [fv.name, f"{fv.value:.4g}", fv.unit,
+                 tr(f"modality.{fv.modality.value}", lang), fv.validation_status]
             )
-        story.append(_table(rows, [5.2 * cm, 2.2 * cm, 1.8 * cm, 2.6 * cm, 4.6 * cm]))
+        story.append(_table(rows, [5.2 * cm, 2.2 * cm, 1.8 * cm, 3.0 * cm, 4.2 * cm]))
+
+    if trial.profile_comparisons:
+        story.append(Paragraph(tr("report.profile_comparison", lang), styles["h2"]))
+        rows = [[
+            tr("report.feature", lang), tr("report.region", lang),
+            tr("report.value", lang),
+            f"{tr('report.control_profile', lang)} (μ±σ)",
+            f"{tr('report.aclr_profile', lang)} (μ±σ)",
+            tr("report.closer_to", lang),
+        ]]
+        closer_levels: list[RiskLevel] = []
+        for pc in trial.profile_comparisons:
+            closer_levels.append(
+                RiskLevel.LOW if pc.closer_to == "control"
+                else (RiskLevel.MODERATE if pc.closer_to == "between" else RiskLevel.HIGH)
+            )
+            rows.append(
+                [
+                    pc.feature,
+                    tr(f"region.{pc.region}", lang),
+                    f"{pc.value:.4g} {pc.unit}",
+                    f"{pc.control_mean:g} ± {pc.control_sd:g} (z={pc.z_control:+.1f})",
+                    f"{pc.aclr_mean:g} ± {pc.aclr_sd:g} (z={pc.z_aclr:+.1f})",
+                    tr(f"closer.{pc.closer_to}", lang),
+                ]
+            )
+        table = _table(rows, [3.4 * cm, 2.2 * cm, 2.4 * cm, 3.7 * cm, 3.7 * cm, 3.0 * cm])
+        table.setStyle(TableStyle(_risk_cell_style(closer_levels)))
+        story.append(table)
 
     if trial.baseline_comparisons:
-        story.append(Paragraph("Normative baseline comparison", styles["h2"]))
-        rows = [["Feature", "Value", "Baseline mean", "SD", "z-score", "Interpretation"]]
+        story.append(Paragraph(tr("report.baseline_comparison", lang), styles["h2"]))
+        rows = [[
+            tr("report.feature", lang), tr("report.value", lang),
+            tr("report.baseline_mean", lang), tr("report.sd", lang),
+            tr("report.zscore", lang), tr("report.interpretation", lang),
+        ]]
         for c in trial.baseline_comparisons:
             rows.append(
                 [
-                    c.feature,
-                    f"{c.participant_value:.4g}",
-                    f"{c.baseline_mean:.4g}",
-                    f"{c.baseline_std:.4g}",
+                    c.feature, f"{c.participant_value:.4g}",
+                    f"{c.baseline_mean:.4g}", f"{c.baseline_std:.4g}",
                     "-" if c.z_score is None else f"{c.z_score:+.2f}",
-                    c.interpretation,
+                    tr_interpretation(c.interpretation, lang),
                 ]
             )
         story.append(_table(rows, [4.2 * cm, 1.9 * cm, 2.3 * cm, 1.5 * cm, 1.7 * cm, 4.8 * cm]))
 
     triggered = [r for r in trial.risk_indicators if r.triggered]
-    story.append(Paragraph("Risk indicators (decision-support only)", styles["h2"]))
+    story.append(Paragraph(tr("report.risk_indicators", lang), styles["h2"]))
     if triggered:
-        rows = [["Indicator", "Feature", "Observed", "Reference", "Level", "Validation"]]
+        rows = [[
+            tr("report.indicator", lang), tr("report.feature", lang),
+            tr("report.observed", lang), tr("report.reference", lang),
+            tr("report.level", lang),
+        ]]
+        levels = []
         for r in triggered:
-            rows.append(
-                [r.name, r.feature, _fmt(r.observed_value), r.reference,
-                 r.risk_level.value, r.validation_status]
-            )
-        story.append(_table(rows, [3.6 * cm, 3.0 * cm, 1.7 * cm, 3.6 * cm, 1.7 * cm, 2.8 * cm]))
+            name = r.name_tr if (lang == "tr" and r.name_tr) else r.name
+            rows.append([name, r.feature, _fmt(r.observed_value), r.reference,
+                         risk_label(r.risk_level, lang)])
+            levels.append(r.risk_level)
+        table = _table(rows, [4.4 * cm, 3.0 * cm, 1.8 * cm, 4.6 * cm, 2.6 * cm])
+        table.setStyle(TableStyle(_risk_cell_style(levels)))
+        story.append(table)
         for r in triggered:
-            story.append(Paragraph(f"<b>{r.name}:</b> {r.explanation}", styles["small"]))
+            name = r.name_tr if (lang == "tr" and r.name_tr) else r.name
+            expl = r.explanation_tr if (lang == "tr" and r.explanation_tr) else r.explanation
+            story.append(Paragraph(f"<b>{name}:</b> {expl}", styles["small"]))
     else:
-        story.append(
-            Paragraph("No configured risk indicator was triggered for this trial.",
-                      styles["body"])
-        )
+        story.append(Paragraph(tr("report.no_indicator", lang), styles["body"]))
 
     if include_plots and trial.data is not None:
         for maker in (plots.plot_fz_with_events, plots.plot_knee_flexion):
@@ -172,8 +306,8 @@ def _trial_story(trial: TrialResult, styles: dict, plot_dir: Path, include_plots
             story.append(_scaled_image(z_path, 16.5 * cm))
 
     if trial.warnings:
-        story.append(Paragraph("Trial warnings", styles["h2"]))
-        for w in dict.fromkeys(trial.warnings):  # de-duplicated, order kept
+        story.append(Paragraph(tr("report.trial_warnings", lang), styles["h2"]))
+        for w in dict.fromkeys(trial.warnings):
             story.append(Paragraph(f"• {w}", styles["warn"]))
     story.append(PageBreak())
     return story
@@ -183,35 +317,75 @@ def generate_pdf_report(
     result: ParticipantResult,
     output_dir: Path,
     include_plots: bool = True,
+    language: str = "en",
 ) -> Path:
-    """Write the participant PDF report and return its path."""
+    """Write the participant PDF report (``language``: ``en`` or ``tr``)."""
+    lang = language if language in ("en", "tr") else "en"
+    _register_fonts()
     styles = _styles()
     ensure_dir(output_dir)
-    out_path = Path(output_dir) / f"{result.participant_id}_biomech_report.pdf"
+    suffix = "" if lang == "en" else f"_{lang}"
+    out_path = Path(output_dir) / f"{result.participant_id}_biomech_report{suffix}.pdf"
 
+    content_width = 17.8 * cm
     story: list = [
-        Paragraph(_TITLE, styles["title"]),
+        Paragraph(tr("report.title", lang), styles["title"]),
         Spacer(1, 4),
         Paragraph(
-            f"Biomechanical Risk Report — Participant <b>{result.participant_id}</b>",
+            f"{tr('report.subtitle', lang)} <b>{result.participant_id}</b>",
             styles["h1"],
         ),
-        Paragraph(f"Analysis timestamp: {result.analysis_timestamp}", styles["body"]),
-        Paragraph(f"Input folder: {result.folder}", styles["body"]),
-        Paragraph(f"Software: biomech-analyzer v{__version__}", styles["body"]),
-        Spacer(1, 6),
-        Paragraph(f"<b>Disclaimer.</b> {DISCLAIMER}", styles["disclaimer"]),
-        Spacer(1, 6),
-        Paragraph("Input validation summary", styles["h1"]),
+        Paragraph(f"{tr('report.timestamp', lang)}: {result.analysis_timestamp}", styles["body"]),
+        Paragraph(f"{tr('report.folder', lang)}: {result.folder}", styles["body"]),
+        Paragraph(
+            f"{tr('report.software', lang)}: biomech-analyzer v{__version__}",
+            styles["body"],
+        ),
+        Spacer(1, 8),
+        _risk_banner(
+            f"{tr('report.overall_risk', lang)}: {risk_label(result.overall_risk, lang)}",
+            result.overall_risk,
+            content_width,
+        ),
+        Spacer(1, 8),
     ]
 
-    rows = [["Trial", "Force plate", "sEMG", "Xsens", "Status"]]
-    from biomech_analyzer.core.constants import Modality
+    # ---- Regional assessment ---------------------------------------------
+    all_profile_comps = [pc for t in result.trials for pc in t.profile_comparisons]
+    if all_profile_comps:
+        statuses = region_status(all_profile_comps)
+        story.append(Paragraph(tr("report.region_summary", lang), styles["h1"]))
+        rows = [[tr("report.region", lang), tr("report.status", lang)]]
+        levels = []
+        for region in REGIONS:
+            if region not in statuses:
+                continue
+            rows.append([tr(f"region.{region}", lang),
+                         risk_label(statuses[region], lang)])
+            levels.append(statuses[region])
+        table = _table(rows, [8 * cm, 5 * cm])
+        table.setStyle(TableStyle(_risk_cell_style(levels)))
+        story.append(table)
+        story.append(Spacer(1, 6))
 
+    story.append(
+        Paragraph(
+            f"<b>{tr('report.disclaimer_title', lang)}.</b> "
+            f"{tr('report.disclaimer', lang)}",
+            styles["disclaimer"],
+        )
+    )
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(tr("report.validation_summary", lang), styles["h1"]))
+
+    rows = [[
+        tr("report.trial", lang), tr("report.forceplate", lang),
+        tr("report.emg", lang), tr("report.xsens", lang), tr("report.status", lang),
+    ]]
     for pkg in sorted(result.validation.trials, key=lambda p: p.trial_id):
         def _cell(m: Modality, _pkg=pkg) -> str:
             f = _pkg.files.get(m)
-            return f.path.name if f else "MISSING"
+            return f.path.name if f else tr("report.missing", lang)
 
         rows.append(
             [
@@ -219,13 +393,14 @@ def generate_pdf_report(
                 _cell(Modality.FORCE_PLATE),
                 _cell(Modality.EMG),
                 _cell(Modality.XSENS),
-                "complete" if pkg.is_complete else "incomplete",
+                tr("report.complete", lang) if pkg.is_complete
+                else tr("report.incomplete", lang),
             ]
         )
     story.append(_table(rows, [3.0 * cm, 4.3 * cm, 4.3 * cm, 4.3 * cm, 2.0 * cm]))
 
     if result.validation.unmatched_files:
-        story.append(Paragraph("Unassigned files", styles["h2"]))
+        story.append(Paragraph(tr("report.unassigned", lang), styles["h2"]))
         for p in result.validation.unmatched_files:
             story.append(Paragraph(f"• {p.name}", styles["warn"]))
 
@@ -236,32 +411,27 @@ def generate_pdf_report(
     )
     if pending:
         story.append(Spacer(1, 4))
-        story.append(
-            Paragraph(
-                "Note: formulas and thresholds marked PENDING_BME_VALIDATION are "
-                "configurable placeholders awaiting confirmation by the "
-                "Biomedical Engineering team.",
-                styles["warn"],
-            )
-        )
+        story.append(Paragraph(tr("report.pending_note", lang), styles["warn"]))
     story.append(PageBreak())
 
     with tempfile.TemporaryDirectory(prefix="biomech_plots_") as tmp:
         plot_dir = Path(tmp)
         for trial in result.trials:
-            story.extend(_trial_story(trial, styles, plot_dir, include_plots))
+            story.extend(_trial_story(trial, styles, plot_dir, include_plots, lang))
 
         if result.ml_output:
-            story.append(Paragraph("Research Mode / machine learning output", styles["h1"]))
+            story.append(Paragraph(tr("report.ml_output", lang), styles["h1"]))
             ml = result.ml_output
             story.append(
                 Paragraph(
-                    f"Majority prediction: <b>{ml.get('majority_prediction', '-')}</b> "
-                    f"(model: {ml.get('model_path', '-')})",
+                    f"{tr('report.ml_majority', lang)}: "
+                    f"<b>{ml.get('majority_prediction', '-')}</b> "
+                    f"({tr('report.ml_model', lang)}: {ml.get('model_path', '-')})",
                     styles["body"],
                 )
             )
-            rows = [["Trial", "Prediction", "Probabilities"]]
+            rows = [[tr("report.trial", lang), tr("report.prediction", lang),
+                     tr("report.probabilities", lang)]]
             for t in ml.get("trials", []):
                 prob = ", ".join(f"{k}: {v}" for k, v in t.get("probabilities", {}).items())
                 rows.append([t.get("trial_id", "-"), t.get("prediction", "-"), prob])
@@ -269,17 +439,28 @@ def generate_pdf_report(
             for w in ml.get("warnings", []):
                 story.append(Paragraph(f"• {w}", styles["warn"]))
 
-        story.append(Paragraph("Warnings and limitations", styles["h1"]))
-        all_warnings = list(
-            dict.fromkeys(result.warnings + result.validation.warnings)
-        )
+        story.append(Paragraph(tr("report.warnings_limitations", lang), styles["h1"]))
+        all_warnings = list(dict.fromkeys(result.warnings + result.validation.warnings))
         if all_warnings:
             for w in all_warnings:
                 story.append(Paragraph(f"• {w}", styles["warn"]))
         else:
-            story.append(Paragraph("No participant-level warnings.", styles["body"]))
+            story.append(Paragraph(tr("report.no_warnings", lang), styles["body"]))
+
+        # ---- References ---------------------------------------------------
+        used_sources = sorted({pc.source for pc in all_profile_comps if pc.source})
+        if used_sources:
+            try:
+                profiles = load_reference_profiles()
+                story.append(Paragraph(tr("report.references", lang), styles["h1"]))
+                for key in used_sources:
+                    citation = profiles.sources.get(key, key)
+                    story.append(Paragraph(f"• {citation}", styles["small"]))
+            except Exception:  # references are optional decoration
+                pass
+
         story.append(Spacer(1, 8))
-        story.append(Paragraph(DISCLAIMER, styles["disclaimer"]))
+        story.append(Paragraph(tr("report.disclaimer", lang), styles["disclaimer"]))
 
         try:
             doc = SimpleDocTemplate(
@@ -295,5 +476,5 @@ def generate_pdf_report(
         except Exception as exc:
             raise ReportError(f"PDF generation failed: {exc}") from exc
 
-    log.info("Report written: %s", out_path)
+    log.info("Report written: %s (language=%s)", out_path, lang)
     return out_path

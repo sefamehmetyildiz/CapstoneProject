@@ -48,7 +48,14 @@ def plot_fz_with_events(
             ax.axhline(events.body_weight_n, color="gray", ls=":", lw=1, label="Body weight")
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Force (N)")
-    ax.set_title(f"{result.trial_id} — vertical GRF and events")
+    from biomech_analyzer.core.constants import RISK_COLORS
+
+    ax.set_title(
+        f"{result.trial_id} — vertical GRF and events "
+        f"[risk: {result.overall_risk.value}]",
+        color=RISK_COLORS[result.overall_risk],
+        fontweight="bold",
+    )
     ax.legend(fontsize=7, ncol=3)
     fig.tight_layout()
     path = out_dir / f"{result.trial_id}_fz.png"
@@ -57,8 +64,17 @@ def plot_fz_with_events(
     return path
 
 
+def _z_color(z: float) -> str:
+    """Risk-band colour for a z-score: green < 1, orange 1-2, red >= 2."""
+    if abs(z) >= 2.0:
+        return "#d62728"
+    if abs(z) >= 1.0:
+        return "#ff7f0e"
+    return "#2ca02c"
+
+
 def plot_zscores(result: TrialResult, out_dir: Path) -> Path | None:
-    """Horizontal bar chart of baseline z-scores for one trial."""
+    """Horizontal bar chart of baseline z-scores, risk-colour coded."""
     comps = [c for c in result.baseline_comparisons if c.z_score is not None]
     if not comps:
         return None
@@ -66,10 +82,10 @@ def plot_zscores(result: TrialResult, out_dir: Path) -> Path | None:
     comps.sort(key=lambda c: abs(c.z_score or 0), reverse=True)
     names = [c.feature for c in comps]
     zs = [c.z_score or 0.0 for c in comps]
-    colors = ["#d62728" if abs(z) >= 1.5 else "#1f77b4" for z in zs]
+    colors = [_z_color(z) for z in zs]
     fig, ax = plt.subplots(figsize=(7, 0.35 * len(comps) + 1.2))
     ax.barh(names[::-1], zs[::-1], color=colors[::-1])
-    for x in (-1.5, 1.5):
+    for x in (-2.0, -1.0, 1.0, 2.0):
         ax.axvline(x, color="gray", ls="--", lw=0.8)
     ax.axvline(0, color="black", lw=0.8)
     ax.set_xlabel("z-score vs normative baseline")

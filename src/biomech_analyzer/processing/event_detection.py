@@ -97,11 +97,18 @@ def _estimate_body_weight(
     return best_median, warnings
 
 
-def detect_events(data: ForcePlateData, config: Config) -> EventSet:
+def detect_events(
+    data: ForcePlateData, config: Config, known_body_weight_n: float | None = None
+) -> EventSet:
     """Detect jump events from a (preprocessed) force plate recording.
 
     Never raises for detection failures; missing events stay ``None`` with
     an explanatory warning so the pipeline can degrade gracefully.
+
+    Args:
+        known_body_weight_n: body weight from participant anthropometrics
+            (mass * g), used as a fallback when the plate offers no stable
+            estimate and as a consistency check otherwise.
     """
     events = EventSet()
     fz = data.fz_n
@@ -114,8 +121,25 @@ def detect_events(data: ForcePlateData, config: Config) -> EventSet:
     selection = str(config.get("events.repetition_selection", "longest_flight"))
 
     bw, bw_warnings = _estimate_body_weight(fz, fs, stance_window_s, threshold)
-    events.body_weight_n = bw
     events.warnings.extend(bw_warnings)
+    if bw is None and known_body_weight_n is not None:
+        bw = known_body_weight_n
+        events.warnings.append(
+            "Body weight taken from participant anthropometrics "
+            f"({known_body_weight_n:.0f} N) because no stable plate estimate "
+            "was available."
+        )
+    elif bw is not None and known_body_weight_n is not None:
+        deviation = abs(bw - known_body_weight_n) / known_body_weight_n
+        if deviation > 0.15:
+            events.warnings.append(
+                f"Plate-based body weight ({bw:.0f} N) deviates "
+                f"{deviation * 100:.0f}% from the participant's registered "
+                f"weight ({known_body_weight_n:.0f} N); the registered weight "
+                "was used instead."
+            )
+            bw = known_body_weight_n
+    events.body_weight_n = bw
 
     candidates = _flight_candidates(fz, fs, threshold, min_flight_s, max_flight_s)
     if not candidates:
@@ -161,6 +185,7 @@ def detect_events(data: ForcePlateData, config: Config) -> EventSet:
     while i > 0 and fz[i] >= threshold:
         i -= 1
     if takeoff_idx - 1 > i:
+        events.contact_start_s = float(t[i + 1])
         events.contact_time_s = float(t[takeoff_idx] - t[i + 1])
 
     # Stabilization: Fz stays within ±band of BW for a sustained hold,

@@ -78,14 +78,37 @@ yalnızca anonim kimlik kullanılır.
    İlerleme ve uyarılar günlükte listelenir (eksik dosyalar atlanır, analiz
    durmaz).
 3. **3. Results and Report** sekmesinde:
-   - *Trial summary*: deneme başına özet,
-   - *Features*: çıkarılan tüm özellikler (baseline z-skorlarıyla),
-   - *Risk indicators*: tetiklenen göstergeler,
+   - En üstte **renkli genel risk seviyesi** görünür
+     (Yüksek = kırmızı, Orta = turuncu, Düşük = yeşil),
+   - *Trial summary*: deneme başına risk, SSC kategorisi ve özet,
+   - *Features*: çıkarılan tüm parametreler (baseline z-skorlarıyla),
+   - *Risk indicators*: tetiklenen göstergeler (risk rengiyle),
+   - *Literature profiles*: her parametrenin literatürdeki Kontrol ve
+     ÖÇB (ACLR) profillerine (ortalama ± SS) uzaklığı ve hangi profile
+     daha yakın olduğu,
    - *Feature plots*: bir deneme satırı seçince kuvvet eğrisi önizlemesi.
-   - **Generate PDF Report** → PDF `output\reports\` klasörüne yazılır ve
-     açmak isteyip istemediğiniz sorulur.
-   - "Save results to local SQLite database" işaretlenirse sonuçlar
-     `output\results.sqlite3` dosyasına da kaydedilir.
+   - **Rapor dili** açılır menüsünden **English / Türkçe** seçin,
+     **Generate PDF Report** → seçilen dilde PDF `output\reports\`
+     klasörüne yazılır (Türkçe raporlar `..._tr.pdf` uzantılıdır).
+   - Analiz sonuçları **otomatik olarak** yerel veritabanına
+     (`output\results.sqlite3`) kaydedilir — ayrıca bir kutucuk
+     işaretlemeniz gerekmez.
+
+### Geçmiş (History) sekmesi
+Daha önce yapılmış tüm analizleri listeler: katılımcı, tarih, **renkli
+genel risk seviyesi** ve rapor dosyası. Bir satırı seçince kayıtlı
+parametre değerleri altta görünür.
+- **Open PDF Report**: o analize ait raporu açar.
+- **Delete Entry**: kaydı veritabanından siler (PDF dosyası silinmez).
+- **Retrain ML from History**: biriken TÜM analiz verileriyle koşul
+  sınıflandırıcısını (baseline / upright / cognitive) yeniden eğitir —
+  etiketler deneme koşullarından otomatik geldiği için dış etikete gerek
+  yoktur ("kendi kendini eğitme"). Doğrulama katılımcı-bağımsız
+  (leave-one-subject-out) yapılır; sonuç metrikleri ekranda gösterilir ve
+  model `output\models\condition_classifier.joblib` olarak kaydedilir.
+  Danışmanla kararlaştırıldığı üzere bu model araştırma amaçlıdır;
+  sakatlık riski değerlendirmesi yorumlanabilir kural-tabanlı katmanda
+  kalır.
 
 ### Gelişmiş ayarlar
 **Advanced / Research** sekmesinden filtre kesim frekansı, temas eşiği (Fz),
@@ -100,14 +123,32 @@ Tek katılımcı:
 ```powershell
 $env:PYTHONPATH="src"
 .\.venv\Scripts\python -m biomech_analyzer.cli validate "SubjectsData\subject 1 zeynep"
-.\.venv\Scripts\python -m biomech_analyzer.cli report   "SubjectsData\subject 1 zeynep"
+.\.venv\Scripts\python -m biomech_analyzer.cli report   "SubjectsData\subject 1 zeynep" --language tr --save-db
+.\.venv\Scripts\python -m biomech_analyzer.cli retrain   # geçmiş verilerle ML'i yeniden eğit
 ```
 
-**Tüm katılımcılar tek komutla:**
+**Tüm katılımcılar tek komutla (Türkçe rapor + veritabanı kaydı):**
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\analyze_all_subjects.ps1
+powershell -ExecutionPolicy Bypass -File scripts\analyze_all_subjects.ps1 -Language tr -SaveDb
 ```
-Raporlar `output\reports\` klasöründe toplanır (örn. `S01_biomech_report.pdf`).
+Raporlar `output\reports\` klasöründe toplanır
+(örn. `S01_biomech_report_tr.pdf`).
+
+## 4b. Rapordaki yeni bölümler
+
+- **Genel risk seviyesi** (renkli banner) ve **bölgesel değerlendirme**
+  (Diz / Kalça / Ayak bileği / Genel) — literatür profil
+  karşılaştırmasından türetilir.
+- **Literatür profil karşılaştırması**: her parametre için Kontrol ve
+  ÖÇB profil ortalamaları (Kotsifaki 2022, Read 2022) ve z-skorları.
+- **SSC kategorisi** (İyi / Orta / Zayıf): kuvvet-zaman eğrisinin
+  yaylanma davranışı (Fz–COM korelasyonu) ve erken darbe piki ölçütleri.
+- **Yeni parametreler**: `contact_time_s` (reaktif temas süresi),
+  `peak_force_time_pct` (iniş pikine ulaşma zamanı, temasın %'si),
+  `ssc_spring_correlation`.
+- **Kaynakça**: kullanılan literatür referansları raporun sonunda listelenir.
+- Tüm eşikler `PENDING_BME_VALIDATION` olarak işaretlidir; nihai onay
+  Biyomedikal ekibindedir.
 
 ---
 

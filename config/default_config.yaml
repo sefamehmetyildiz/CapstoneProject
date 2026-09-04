@@ -75,6 +75,10 @@ events:
   # Which repetition to analyze when several jumps exist in one recording:
   # "longest_flight" (default) or "first". requires_bme_validation
   repetition_selection: "longest_flight"
+  # Drop-box height for SLDJ trials (experimental protocol: 15 cm platform).
+  # Used to derive the touchdown velocity for SSC / landing-phase analysis
+  # when the preceding airborne phase cannot be observed on the plate.
+  drop_box_height_m: 0.15         # requires_bme_validation
 
 report:
   language: "en"

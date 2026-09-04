@@ -16,8 +16,10 @@ from biomech_analyzer import DISCLAIMER, __version__
 from biomech_analyzer.app.screens.advanced_settings import AdvancedSettingsScreen
 from biomech_analyzer.app.screens.analysis_dashboard import AnalysisDashboardScreen
 from biomech_analyzer.app.screens.folder_selection import FolderSelectionScreen
+from biomech_analyzer.app.screens.history import HistoryScreen
 from biomech_analyzer.app.screens.results_report import ResultsReportScreen
 from biomech_analyzer.app.state import AppState
+from biomech_analyzer.app.style import STYLESHEET
 
 log = logging.getLogger(__name__)
 
@@ -33,13 +35,16 @@ class MainWindow(QMainWindow):
         self.folder_screen = FolderSelectionScreen(self.state)
         self.dashboard_screen = AnalysisDashboardScreen(self.state)
         self.results_screen = ResultsReportScreen(self.state)
+        self.history_screen = HistoryScreen(self.state)
         self.advanced_screen = AdvancedSettingsScreen(self.state)
 
         self.tabs.addTab(self.folder_screen, "1. Folder Selection")
         self.tabs.addTab(self.dashboard_screen, "2. Analysis Dashboard")
         self.tabs.addTab(self.results_screen, "3. Results and Report")
+        self.tabs.addTab(self.history_screen, "History")
         self.tabs.addTab(self.advanced_screen, "Advanced / Research")
         self.setCentralWidget(self.tabs)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
 
         status = QStatusBar()
         status.showMessage(DISCLAIMER)
@@ -56,10 +61,15 @@ class MainWindow(QMainWindow):
         self.results_screen.refresh()
         self.tabs.setCurrentWidget(self.results_screen)
 
+    def _on_tab_changed(self, index: int) -> None:
+        if self.tabs.widget(index) is self.history_screen:
+            self.history_screen.refresh()
+
 
 def run_gui() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Biomech Analyzer")
+    app.setStyleSheet(STYLESHEET)
     window = MainWindow()
     window.show()
     return app.exec()

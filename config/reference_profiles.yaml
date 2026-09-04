@@ -1,0 +1,153 @@
+# Literature-based reference profiles for profile comparison.
+#
+# Per the Biomedical Engineering advisor's guidance, participant values are
+# NOT converted into arbitrary injury-risk scores; instead each feature is
+# compared against two literature profiles:
+#   control : healthy control cohort (mean +/- SD)
+#   aclr    : ACL-reconstructed involved limb cohort (mean +/- SD)
+# and the report states which profile the value is closer to
+# ("Control profile" vs "ACLR-associated profile").
+#
+# Values were provided by the Biomedical Engineering advisor from:
+#   kotsifaki2022 - Kotsifaki A, Van Rossom S, Whiteley R, Korakakis V,
+#     Bahr R, Sideris V, Jonkers I. "Single leg vertical jump performance
+#     identifies knee function deficits at return to sport after ACL
+#     reconstruction in male athletes." Br J Sports Med 2022;56:490-498.
+#     doi:10.1136/bjsports-2021-104692
+#   read2022 - Read PJ, Pedley JS, Eirug I, Sideris V, Oliver JL.
+#     "Impaired stretch-shortening cycle function persists despite
+#     improvements in reactive strength after ACL reconstruction."
+#     J Strength Cond Res 2022;36(5):1238-1244.
+#   pedley2020 - Pedley JS, Lloyd RS, Read PJ, et al. "A novel method to
+#     categorize stretch-shortening cycle performance across maturity in
+#     youth soccer players." J Strength Cond Res 2020 (SSC categorization).
+#
+# All entries: PENDING_BME_VALIDATION until confirmed for this cohort.
+# task: SLVJ | SLDJ | ALL. region: knee | hip | ankle | global.
+
+references:
+  # ----- Knee ------------------------------------------------------------
+  - feature: peak_knee_flexion_deg
+    region: knee
+    task: SLVJ
+    unit: deg
+    control: {mean: 62.1, sd: 10.2}
+    aclr: {mean: 61.1, sd: 11.2}
+    source: kotsifaki2022
+  - feature: peak_knee_flexion_deg
+    region: knee
+    task: SLDJ
+    unit: deg
+    control: {mean: 60.5, sd: 7.5}
+    aclr: {mean: 59.0, sd: 7.9}
+    source: kotsifaki2022
+
+  # ----- Hip -------------------------------------------------------------
+  - feature: peak_hip_flexion_deg
+    region: hip
+    task: SLVJ
+    unit: deg
+    control: {mean: 64.7, sd: 19.1}
+    aclr: {mean: 67.3, sd: 16.8}
+    source: kotsifaki2022
+  - feature: peak_hip_flexion_deg
+    region: hip
+    task: SLDJ
+    unit: deg
+    control: {mean: 54.0, sd: 11.6}
+    aclr: {mean: 61.5, sd: 12.5}
+    source: kotsifaki2022
+
+  # ----- Ankle -----------------------------------------------------------
+  - feature: peak_ankle_dorsiflexion_deg
+    region: ankle
+    task: SLVJ
+    unit: deg
+    control: {mean: 27.2, sd: 4.6}
+    aclr: {mean: 26.0, sd: 4.2}
+    source: kotsifaki2022
+  - feature: peak_ankle_dorsiflexion_deg
+    region: ankle
+    task: SLDJ
+    unit: deg
+    control: {mean: 23.9, sd: 4.0}
+    aclr: {mean: 22.9, sd: 3.1}
+    source: kotsifaki2022
+
+  # ----- Global (whole limb kinetics) ------------------------------------
+  - feature: peak_vgrf_bw
+    region: global
+    task: SLDJ
+    unit: BW
+    control: {mean: 3.38, sd: 0.50}
+    aclr: {mean: 2.79, sd: 0.31}
+    source: read2022
+  - feature: contact_time_s
+    region: global
+    task: SLDJ
+    unit: s
+    control: {mean: 0.31, sd: 0.03}
+    aclr: {mean: 0.40, sd: 0.06}
+    source: read2022
+  - feature: peak_force_time_pct
+    region: global
+    task: SLDJ
+    unit: "%"
+    control: {mean: 31.93, sd: 11.01}
+    aclr: {mean: 18.89, sd: 8.17}
+    source: read2022
+  - feature: rsi
+    region: global
+    task: SLDJ
+    unit: m/s
+    control: {mean: 0.57, sd: 0.10}
+    aclr: {mean: 0.34, sd: 0.08}
+    source: read2022
+  - feature: jump_height_m
+    region: global
+    task: SLDJ
+    unit: m
+    control: {mean: 0.17, sd: 0.02}
+    aclr: {mean: 0.13, sd: 0.03}
+    source: read2022
+  - feature: jump_height_m
+    region: global
+    task: SLVJ
+    unit: m
+    control: {mean: 0.137, sd: 0.021}
+    aclr: {mean: 0.110, sd: 0.035}
+    source: kotsifaki2022
+  - feature: ssc_spring_correlation
+    region: global
+    task: SLDJ
+    unit: r
+    control: {mean: -0.96, sd: 0.04}
+    aclr: {mean: -0.86, sd: 0.08}
+    source: read2022
+
+sources:
+  kotsifaki2022: >
+    Kotsifaki A, Van Rossom S, Whiteley R, Korakakis V, Bahr R, Sideris V,
+    Jonkers I. Single leg vertical jump performance identifies knee function
+    deficits at return to sport after ACL reconstruction in male athletes.
+    Br J Sports Med 2022;56:490-498. doi:10.1136/bjsports-2021-104692
+  read2022: >
+    Read PJ, Pedley JS, Eirug I, Sideris V, Oliver JL. Impaired
+    stretch-shortening cycle function persists despite improvements in
+    reactive strength after ACL reconstruction. J Strength Cond Res
+    2022;36(5):1238-1244. doi:10.1519/JSC.0000000000003977
+  pedley2020: >
+    Pedley JS, Lloyd RS, Read PJ, Moore IS, Myer GD, Oliver JL. A novel
+    method to categorize stretch-shortening cycle performance across
+    maturity in youth soccer players. J Strength Cond Res 2020.
+    doi:10.1519/JSC.0000000000003800
+  chaaban2023: >
+    Chaaban CR, Turner JA, Padua DA. Think outside the box: Incorporating
+    secondary cognitive tasks into return to sport testing after ACL
+    reconstruction. Front Sports Act Living 2023;4:1089882.
+    doi:10.3389/fspor.2022.1089882
+  strong2025: >
+    Strong A, Markstrom JL. Adding secondary cognitive tasks to drop
+    vertical jumps alters the landing mechanics of athletes with anterior
+    cruciate ligament reconstruction. J Biomech 2025;180:112496.
+    doi:10.1016/j.jbiomech.2025.112496

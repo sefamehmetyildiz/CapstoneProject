@@ -82,6 +82,37 @@ sweep established (and the code now handles):
 * **Folder names contain personal names** — `subject 4 sefa` → anonymous
   `S04` with a privacy warning.
 
+## Advisor-driven design decisions (2026-09)
+
+Captured from the Q&A with the Biomedical and Software Engineering
+advisors (screenshots/notes in the project records):
+
+* **Two-layer diagnostics** (SE advisor approved): the ML model is a
+  research-oriented *condition* classifier (baseline/upright/cognitive)
+  with participant-independent LOSO validation; injury-risk assessment
+  stays with the interpretable rule-based + literature-profile layer.
+  `ml/retrain.py` retrains the condition model from the local SQLite
+  history at any time (labels come from trial identity — no external
+  ground truth needed).
+* **Profile framing** (BME advisor): instead of arbitrary Low/Mod/High
+  injury scores, features are compared against literature Control vs
+  ACLR-involved profiles (`config/reference_profiles.yaml`; Kotsifaki
+  2022, Read 2022) with regional grouping (knee/hip/ankle/global).
+  The colour-coded overall level shown in reports aggregates only the
+  rule-based indicator triggers and is labelled decision-support.
+* **SSC categorization** (BME advisor): Good/Moderate/Poor per
+  Pedley/Read — spring-like Fz-vs-COM-displacement correlation
+  (<= -0.80) and an impact peak in the first 20 % of the reactive
+  contact. SLDJ-only; touchdown velocity from the preceding flight or
+  the 15 cm protocol box (`events.drop_box_height_m`).
+* **Peak landing force time** added per advisor request
+  (`peak_force_time_pct`, % of contact; controls ~32 %, ACLR ~19 %).
+* **MVIC**: not collected in the real dataset, so EMG stays
+  non-normalized (flagged); the advisor-suggested dynamic-peak
+  normalization is a possible future option.
+* **Anthropometrics** (`config/participants.yaml`) provide a body-weight
+  fallback (mass x g) and a plate-consistency check.
+
 ## Known limitations
 
 * Streams are started independently (EMG ~11 s vs force plate ~35 s per

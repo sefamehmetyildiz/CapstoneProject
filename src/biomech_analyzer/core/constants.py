@@ -37,6 +37,24 @@ class RiskLevel(str, Enum):
     HIGH = "HIGH"
 
 
+#: Colour coding for risk levels (reports, plots, GUI):
+#: high = red, moderate = orange, low/none = green.
+RISK_COLORS: dict[RiskLevel, str] = {
+    RiskLevel.NONE: "#2ca02c",
+    RiskLevel.LOW: "#2ca02c",
+    RiskLevel.MODERATE: "#ff7f0e",
+    RiskLevel.HIGH: "#d62728",
+}
+
+#: Light background variants for banners/table cells.
+RISK_BG_COLORS: dict[RiskLevel, str] = {
+    RiskLevel.NONE: "#e7f5e7",
+    RiskLevel.LOW: "#e7f5e7",
+    RiskLevel.MODERATE: "#fdeedd",
+    RiskLevel.HIGH: "#fbe5e5",
+}
+
+
 #: File extensions accepted per modality. ".csv" is ambiguous (Bertec force
 #: exports and Delsys EMG exports both use it) and is resolved by keywords
 #: and content sniffing in the trial matcher.

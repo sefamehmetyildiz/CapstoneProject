@@ -42,6 +42,11 @@ def evaluate_risk_rules(
     """
     results: list[RiskIndicatorResult] = []
     for rule in rules:
+        # Task-scoped rules (e.g. drop-jump reactive-contact literature
+        # thresholds) are skipped entirely for other tasks.
+        rule_task = str(rule.get("task", "ALL")).upper()
+        if rule_task not in ("ALL", features.task.value.upper()):
+            continue
         rid = str(rule.get("id", "unnamed_rule"))
         name = str(rule.get("name", rid))
         feature = str(rule.get("feature", ""))
@@ -93,6 +98,8 @@ def evaluate_risk_rules(
                 risk_level=level if triggered else RiskLevel.NONE,
                 explanation=explanation,
                 validation_status=validation,
+                name_tr=str(rule.get("name_tr", "") or ""),
+                explanation_tr=" ".join(str(rule.get("explanation_tr", "") or "").split()),
             )
         )
     n_triggered = sum(1 for r in results if r.triggered)

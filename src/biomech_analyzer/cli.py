@@ -51,8 +51,19 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rep.add_argument("--baseline", type=Path, default=None)
     p_rep.add_argument("--out", type=Path, default=None, help="report output directory")
     p_rep.add_argument("--model", type=Path, default=None, help="trained ML model for inference")
+    p_rep.add_argument(
+        "--language", "-l", choices=["en", "tr"], default="en",
+        help="report language (en=English, tr=Turkce)",
+    )
     p_rep.add_argument("--no-plots", action="store_true")
     p_rep.add_argument("--save-db", action="store_true")
+
+    p_ret = sub.add_parser(
+        "retrain",
+        help="retrain the condition classifier from all stored analyses",
+    )
+    p_ret.add_argument("--db", type=Path, default=None, help="SQLite database path")
+    p_ret.add_argument("--model-out", type=Path, default=None)
 
     p_tr = sub.add_parser("train", help="Research Mode: train and evaluate a model")
     p_tr.add_argument("dataset_folder", type=Path, help="folder of participant subfolders")
@@ -125,7 +136,7 @@ def _cmd_report(args: argparse.Namespace, config: Config) -> int:
         result.ml_output = predict_participant(result, args.model)
     out_dir = args.out or Path(config.get("report.output_dir", "output/reports"))
     report_path = generate_pdf_report(
-        result, out_dir, include_plots=not args.no_plots
+        result, out_dir, include_plots=not args.no_plots, language=args.language
     )
     result.report_path = report_path
     _print_analysis_summary(result)
@@ -177,11 +188,29 @@ def _cmd_train(args: argparse.Namespace, config: Config) -> int:
     return 0
 
 
+def _cmd_retrain(args: argparse.Namespace, config: Config) -> int:
+    from biomech_analyzer.ml.retrain import retrain_condition_model
+
+    db_path = args.db or Path(config.get("storage.sqlite_path", "output/results.sqlite3"))
+    if not Path(db_path).is_file():
+        _print(f"No results database found at {db_path}. Run analyses with --save-db first.")
+        return 1
+    result = retrain_condition_model(db_path, config, args.model_out)
+    _print(
+        f"Condition classifier retrained on {result.n_trials} trials from "
+        f"{result.n_participants} participants."
+    )
+    _print(*result.output.evaluation.summary_lines())
+    _print(f"Model exported to {result.model_path}")
+    return 0
+
+
 _COMMANDS = {
     "validate": _cmd_validate,
     "analyze": _cmd_analyze,
     "report": _cmd_report,
     "train": _cmd_train,
+    "retrain": _cmd_retrain,
 }
 
 

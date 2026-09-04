@@ -113,12 +113,28 @@ class AnalysisDashboardScreen(QWidget):
         self.progress_bar.setValue(1)
         self.run_btn.setEnabled(True)
         self.log_area.appendPlainText(
-            f"Analyzed {len(result.trials)} trial(s)."
+            f"Analyzed {len(result.trials)} trial(s). "
+            f"Overall risk level: {result.overall_risk.value}."
         )
         for w in result.warnings:
             self.log_area.appendPlainText(f"WARNING: {w}")
+        self._auto_save(result)
         self.status_label.setText("Analysis complete — see Results and Report.")
         self.analysis_finished.emit()
+
+    def _auto_save(self, result: ParticipantResult) -> None:
+        """Persist the analysis to the local database for the History screen."""
+        try:
+            from biomech_analyzer.storage.sqlite_repository import SqliteRepository
+
+            with SqliteRepository(self.state.db_path) as repo:
+                self.state.analysis_id = repo.save_participant_result(result)
+            self.log_area.appendPlainText(
+                f"Saved to local database (record #{self.state.analysis_id})."
+            )
+        except Exception as exc:  # saving must never block the workflow
+            self.state.analysis_id = None
+            self.log_area.appendPlainText(f"WARNING: could not save to database: {exc}")
 
     def _on_failed(self, message: str) -> None:
         self.progress_bar.setRange(0, 1)

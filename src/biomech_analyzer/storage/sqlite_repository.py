@@ -72,9 +72,18 @@ class SqliteRepository:
             self._conn = sqlite3.connect(str(self.db_path))
             self._conn.execute("PRAGMA foreign_keys = ON")
             self._conn.executescript(_SCHEMA)
+            self._migrate()
             self._conn.commit()
         except sqlite3.Error as exc:
             raise StorageError(f"Could not open results database: {exc}") from exc
+
+    def _migrate(self) -> None:
+        """Add columns introduced after the first release (idempotent)."""
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(analyses)")}
+        if "overall_risk" not in cols:
+            self._conn.execute(
+                "ALTER TABLE analyses ADD COLUMN overall_risk TEXT DEFAULT 'LOW'"
+            )
 
     def close(self) -> None:
         self._conn.close()
@@ -93,8 +102,8 @@ class SqliteRepository:
             cur = self._conn.cursor()
             cur.execute(
                 "INSERT INTO analyses (participant_id, analysis_timestamp, folder,"
-                " report_path, warnings_json, ml_output_json)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
+                " report_path, warnings_json, ml_output_json, overall_risk)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     result.participant_id,
                     result.analysis_timestamp,
@@ -102,6 +111,7 @@ class SqliteRepository:
                     str(result.report_path) if result.report_path else None,
                     json.dumps(result.warnings),
                     json.dumps(result.ml_output) if result.ml_output else None,
+                    result.overall_risk.value,
                 ),
             )
             analysis_id = int(cur.lastrowid or 0)
@@ -156,8 +166,57 @@ class SqliteRepository:
 
     def list_analyses(self) -> list[dict]:
         cur = self._conn.execute(
-            "SELECT id, participant_id, analysis_timestamp, folder, report_path"
-            " FROM analyses ORDER BY id DESC"
+            "SELECT id, participant_id, analysis_timestamp, folder, report_path,"
+            " overall_risk FROM analyses ORDER BY id DESC"
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+
+    def update_report_path(
+        self, analysis_id: int, report_path: Path, overall_risk: str | None = None
+    ) -> None:
+        """Attach a generated report (and optionally risk) to a stored analysis."""
+        try:
+            if overall_risk is not None:
+                self._conn.execute(
+                    "UPDATE analyses SET report_path = ?, overall_risk = ?"
+                    " WHERE id = ?",
+                    (str(report_path), overall_risk, analysis_id),
+                )
+            else:
+                self._conn.execute(
+                    "UPDATE analyses SET report_path = ? WHERE id = ?",
+                    (str(report_path), analysis_id),
+                )
+            self._conn.commit()
+        except sqlite3.Error as exc:
+            raise StorageError(f"Updating stored analysis failed: {exc}") from exc
+
+    def delete_analysis(self, analysis_id: int) -> None:
+        """Remove one stored analysis (cascades to trials/features/indicators)."""
+        try:
+            self._conn.execute("DELETE FROM analyses WHERE id = ?", (analysis_id,))
+            self._conn.commit()
+        except sqlite3.Error as exc:
+            raise StorageError(f"Deleting stored analysis failed: {exc}") from exc
+
+    def latest_feature_rows(self) -> list[dict]:
+        """Per-trial feature rows from the LATEST analysis of each participant.
+
+        One dict per (trial, feature): participant_id, trial_id, task,
+        condition, name, value. Used to (re)train the condition classifier
+        from accumulated history without double-counting re-analyses.
+        """
+        cur = self._conn.execute(
+            "SELECT a.participant_id, t.trial_id, t.task, t.condition,"
+            " f.name, f.value"
+            " FROM analyses a"
+            " JOIN trials t ON t.analysis_id = a.id"
+            " JOIN features f ON f.trial_row_id = t.id"
+            " WHERE a.id = ("
+            "   SELECT MAX(a2.id) FROM analyses a2"
+            "   WHERE a2.participant_id = a.participant_id)"
+            " ORDER BY a.participant_id, t.trial_id, f.name"
         )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]

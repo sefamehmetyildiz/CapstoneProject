@@ -15,6 +15,14 @@ Formula notes
 * time_to_stabilization_s = stabilization - IC
 * landing_impulse_ns  = trapezoidal integral of Fz from IC to stabilization
 * cop_path_length_m   = sum of CoP step lengths from IC to stabilization
+* contact_time_s      = reactive ground contact duration before take-off
+* peak_force_time_pct = time of peak Fz within the reactive contact,
+                        as % of contact duration (Read 2022 definition)
+* ssc_spring_correlation = Pearson r between Fz and vertical COM
+                        displacement over the reactive contact; spring-like
+                        behaviour when r <= -0.80 (Read/Pedley criteria);
+                        combined with an early impact peak (< 20 % of
+                        contact) into an SSC category good/moderate/poor
 * preactivation_ratio = mean summed EMG envelope in the pre-IC window
                         divided by its trial peak
 * hq_activation_ratio = mean hamstring envelope / mean quadriceps envelope
@@ -151,6 +159,8 @@ def _force_plate_features(
         else:
             tf.warnings.append("rsi skipped: push-off contact time unavailable.")
 
+    _reactive_contact_features(tf, fp, events, config)
+
     if ic is not None and events.stabilization_s is not None:
         tts = events.stabilization_s - ic
         _add(
@@ -172,6 +182,117 @@ def _force_plate_features(
                     float(np.nansum(np.sqrt(dx**2 + dy**2))), "m", Modality.FORCE_PLATE,
                     "Centre-of-pressure path length during the landing phase.",
                 )
+
+
+def _reactive_contact_features(
+    tf: TrialFeatures, fp: object, events: EventSet, config: Config
+) -> None:
+    """Features of the reactive ground contact preceding take-off.
+
+    Implements the drop-jump reactive-contact metrics of Read 2022 /
+    Pedley 2020: contact time, timing of the peak force within contact,
+    and a simplified stretch-shortening cycle (SSC) categorization based
+    on (a) an impact peak in the first 20 % of contact and (b) spring-like
+    behaviour, i.e. a strong negative correlation between Fz and the
+    vertical centre-of-mass displacement obtained by double integration
+    (initial velocity from the preceding free-fall duration).
+    All PENDING_BME_VALIDATION.
+    """
+    if events.contact_start_s is None or events.takeoff_s is None:
+        return
+    t = fp.time_s  # type: ignore[attr-defined]
+    fz = fp.fz_n  # type: ignore[attr-defined]
+    i0 = int(np.searchsorted(t, events.contact_start_s))
+    i1 = int(np.searchsorted(t, events.takeoff_s))
+    if i1 - i0 < 10:
+        return
+    duration = float(t[i1 - 1] - t[i0])
+    if duration <= 0:
+        return
+    _add(
+        tf, "contact_time_s", duration, "s", Modality.FORCE_PLATE,
+        "Ground contact duration before take-off (reactive contact for SLDJ).",
+    )
+    contact_fz = fz[i0:i1]
+    contact_t = t[i0:i1]
+
+    # ---- touchdown velocity for COM integration ---------------------------
+    # Preferred: observed free-fall duration immediately before contact
+    # (previous repetition's flight). SLDJ fallback: the participant drops
+    # from a box placed OFF the plate, so the below-threshold interval also
+    # contains standing on the box; the protocol box height (15 cm) then
+    # provides the touchdown velocity v0 = -sqrt(2 g h).
+    bw = events.body_weight_n
+    v0: float | None = None
+    threshold = float(config.get("force_plate.contact_threshold_n", 20.0))
+    j = i0 - 1
+    while j > 0 and fz[j] < threshold:
+        j -= 1
+    t_air = float(t[i0 - 1] - t[j]) if i0 >= 1 else 0.0
+    if 0.05 <= t_air <= 0.9:
+        v0 = -9.81 * t_air
+    elif tf.task.value == "SLDJ":
+        box_h = float(config.get("events.drop_box_height_m", 0.15))
+        v0 = -float(np.sqrt(2 * 9.81 * box_h))
+
+    # SSC categorization and landing-phase peak timing follow drop-jump
+    # literature (Read 2022 / Pedley 2020); they are only meaningful for
+    # the SLDJ reactive contact, not the SLVJ countermovement stance.
+    if tf.task.value != "SLDJ":
+        return
+
+    if bw is None or bw <= 0 or v0 is None:
+        # Landing sub-phase unknown: report peak timing over the whole
+        # contact only for short, clearly reactive contacts.
+        if duration <= 0.6:
+            peak_rel = int(np.argmax(contact_fz))
+            pct = 100.0 * float(contact_t[peak_rel] - contact_t[0]) / duration
+            _add(
+                tf, "peak_force_time_pct", pct, "%", Modality.FORCE_PLATE,
+                "Time of peak force within the reactive contact, as % of "
+                "contact duration.",
+            )
+        tf.warnings.append(
+            "SSC classification skipped: touchdown velocity could not be "
+            "estimated (no observable free-fall and no drop-box reference)."
+        )
+        return
+
+    mass = bw / 9.81
+    accel = (contact_fz - bw) / mass
+    dt = np.diff(contact_t)
+    vel = v0 + np.concatenate([[0.0], np.cumsum((accel[1:] + accel[:-1]) / 2 * dt)])
+    disp = np.concatenate([[0.0], np.cumsum((vel[1:] + vel[:-1]) / 2 * dt)])
+    if float(np.std(disp)) <= 0 or float(np.std(contact_fz)) <= 0:
+        return
+
+    # Landing sub-phase = contact start until peak downward COM displacement
+    # (Read 2022); peak LANDING force is the maximum within that sub-phase,
+    # expressed as % of the total contact duration.
+    com_min = int(np.argmin(disp))
+    landing_end = max(com_min, 2)
+    peak_rel = int(np.argmax(contact_fz[: landing_end + 1]))
+    pct = 100.0 * float(contact_t[peak_rel] - contact_t[0]) / duration
+    _add(
+        tf, "peak_force_time_pct", pct, "%", Modality.FORCE_PLATE,
+        "Time of the peak landing force (within the landing sub-phase, up "
+        "to peak COM displacement) as % of total contact duration.",
+    )
+    impact_peak = pct < 20.0
+
+    r = float(np.corrcoef(contact_fz, disp)[0, 1])
+    _add(
+        tf, "ssc_spring_correlation", r, "r", Modality.FORCE_PLATE,
+        "Pearson correlation between Fz and vertical COM displacement over "
+        "the reactive contact (spring-like when r <= -0.80).",
+    )
+    spring_like = r <= -0.80
+    if spring_like and not impact_peak:
+        tf.ssc_category = "good"
+    elif (not spring_like) and impact_peak:
+        tf.ssc_category = "poor"
+    else:
+        tf.ssc_category = "moderate"
 
 
 def _landing_window(
