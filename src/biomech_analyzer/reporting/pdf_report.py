@@ -1,10 +1,11 @@
 """Standardized bilingual (EN/TR) PDF report generation — expert layout.
 
 Compact, table-driven template aimed at expert readers: descriptive
-headings, no explanatory prose, validation status and the decision-support
-disclaimer reduced to single footnotes. DejaVu Sans (bundled with
-matplotlib) is registered so Turkish characters render correctly; risk
-levels colour the report (high = red, moderate = orange, low = green).
+headings, no explanatory prose, no boilerplate sections (disclaimer,
+validation summary, sync details, warnings and references are omitted).
+DejaVu Sans (bundled with matplotlib) is registered so Turkish characters
+render correctly; risk levels colour the report (high = red,
+moderate = orange, low = green).
 """
 
 from __future__ import annotations
@@ -34,16 +35,11 @@ from biomech_analyzer import __version__
 from biomech_analyzer.core.constants import (
     RISK_BG_COLORS,
     RISK_COLORS,
-    Modality,
     RiskLevel,
 )
 from biomech_analyzer.core.exceptions import ReportError
 from biomech_analyzer.core.models import ParticipantResult, TrialResult
-from biomech_analyzer.diagnostics.profile_comparison import (
-    REGIONS,
-    load_reference_profiles,
-    region_status,
-)
+from biomech_analyzer.diagnostics.profile_comparison import REGIONS, region_status
 from biomech_analyzer.reporting import plots
 from biomech_analyzer.reporting.i18n import risk_label, tr
 from biomech_analyzer.utils.file_utils import ensure_dir
@@ -167,21 +163,6 @@ def _risk_cell_style(rows: list[RiskLevel], header_offset: int = 1) -> list[tupl
     return cmds
 
 
-def _sync_line(trial: TrialResult) -> str:
-    """One-line synchronization summary (strategy + applied offsets)."""
-    if trial.sync is None:
-        return "-"
-    parts = [trial.sync.strategy]
-    offsets = []
-    if trial.sync.emg_offset_s:
-        offsets.append(f"EMG {trial.sync.emg_offset_s:+.2f} s")
-    if trial.sync.xsens_offset_s:
-        offsets.append(f"Xsens {trial.sync.xsens_offset_s:+.2f} s")
-    if offsets:
-        parts.append("(" + ", ".join(offsets) + ")")
-    return " ".join(parts)
-
-
 def _trial_story(
     trial: TrialResult, styles: dict, plot_dir: Path, include_plots: bool, lang: str
 ) -> list:
@@ -194,7 +175,7 @@ def _trial_story(
         )
     ]
 
-    # ---- events + SSC + sync in one compact table -------------------------
+    # ---- events + SSC in one compact table --------------------------------
     ev = trial.features.events
     if ev is not None:
         ssc = trial.features.ssc_category
@@ -208,7 +189,6 @@ def _trial_story(
                         _wrap(tr("report.peak_force", lang), bold=True),
                         _wrap(tr("report.stabilization", lang), bold=True),
                         _wrap("SSC", bold=True),
-                        _wrap(tr("report.sync", lang), bold=True),
                     ],
                     [
                         _fmt(ev.initial_contact_s),
@@ -216,10 +196,9 @@ def _trial_story(
                         _fmt(ev.peak_force_s),
                         _fmt(ev.stabilization_s),
                         ssc_text,
-                        _wrap(_sync_line(trial)),
                     ],
                 ],
-                [2.4 * cm, 2.0 * cm, 3.0 * cm, 2.6 * cm, 1.6 * cm, 6.2 * cm],
+                [3.6 * cm, 3.2 * cm, 4.2 * cm, 3.8 * cm, 3.0 * cm],
             )
         )
 
@@ -360,22 +339,6 @@ def generate_pdf_report(
         table.setStyle(TableStyle(_risk_cell_style(levels)))
         story.append(table)
 
-    # ---- input files ------------------------------------------------------
-    story.append(Paragraph(tr("report.validation_summary", lang), styles["h1"]))
-    rows = [[
-        tr("report.trial", lang), tr("report.forceplate", lang),
-        tr("report.emg", lang), tr("report.xsens", lang),
-    ]]
-    for pkg in sorted(result.validation.trials, key=lambda p: p.trial_id):
-        def _cell(m: Modality, _pkg=pkg) -> str:
-            f = _pkg.files.get(m)
-            return f.path.name if f else tr("report.missing", lang)
-
-        rows.append(
-            [pkg.trial_id, _cell(Modality.FORCE_PLATE), _cell(Modality.EMG),
-             _cell(Modality.XSENS)]
-        )
-    story.append(_table(rows, [3.0 * cm, 4.9 * cm, 4.9 * cm, 4.9 * cm]))
     story.append(PageBreak())
 
     with tempfile.TemporaryDirectory(prefix="biomech_plots_") as tmp:
@@ -402,36 +365,9 @@ def generate_pdf_report(
                 rows.append([t.get("trial_id", "-"), t.get("prediction", "-"), prob])
             story.append(_table(rows, [3.5 * cm, 3.5 * cm, 9 * cm]))
 
-        # ---- deduplicated warnings (participant + all trials) ------------
-        all_warnings = list(
-            dict.fromkeys(
-                result.warnings
-                + result.validation.warnings
-                + [w for t in result.trials for w in t.warnings]
-            )
-        )
-        if all_warnings:
-            story.append(Paragraph(tr("report.warnings_limitations", lang), styles["h1"]))
-            for w in all_warnings:
-                story.append(Paragraph(f"• {w}", styles["footnote"]))
-
-        # ---- references ---------------------------------------------------
-        used_sources = sorted({pc.source for pc in all_profile_comps if pc.source})
-        if used_sources:
-            try:
-                profiles = load_reference_profiles()
-                story.append(Paragraph(tr("report.references", lang), styles["h1"]))
-                for key in used_sources:
-                    story.append(
-                        Paragraph(f"• {profiles.sources.get(key, key)}", styles["small"])
-                    )
-            except Exception:
-                pass
-
-        # ---- single-line footnotes ---------------------------------------
+        # ---- single-line footnote ----------------------------------------
         story.append(Spacer(1, 10))
         story.append(Paragraph(tr("report.pending_note", lang), styles["footnote"]))
-        story.append(Paragraph(tr("report.disclaimer", lang), styles["footnote"]))
 
         try:
             doc = SimpleDocTemplate(
