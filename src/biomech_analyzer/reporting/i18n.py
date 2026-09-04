@@ -25,6 +25,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "report.participant": {"en": "Participant", "tr": "Katılımcı"},
     "report.page": {"en": "Page", "tr": "Sayfa"},
     "report.trial_overview": {"en": "Findings summary", "tr": "Bulgular özeti"},
+    "report.plots": {"en": "Force–time curves", "tr": "Kuvvet–zaman eğrileri"},
     "report.triggered_count": {
         "en": "Triggered indicators",
         "tr": "Tetiklenen gösterge",

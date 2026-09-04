@@ -1,12 +1,12 @@
 """Standardized bilingual (EN/TR) PDF report generation — clinical layout.
 
-Compact, table-driven template aimed at expert readers, styled like a
-clinical/laboratory report: a repeating page header band and numbered
-footer, a patient-information style summary box, uniform full-width
-tables with a single header style, and a continuous flow (no forced page
-break per trial) to avoid half-empty pages. DejaVu Sans (bundled with
-matplotlib) is registered so Turkish characters render correctly; risk
-levels colour the report (high = red, moderate = orange, low = green).
+Compact clinical template for expert readers: a repeating page header
+band and numbered footer, a patient-information style summary box, and
+matrix tables that show all trials side by side (rows = parameters,
+columns = trials) instead of one section per trial, keeping the whole
+report to a few pages. DejaVu Sans (bundled with matplotlib) is
+registered so Turkish characters render correctly; risk levels colour
+the report (high = red, moderate = orange, low = green).
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Image,
-    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -42,7 +41,7 @@ from biomech_analyzer.core.constants import (
     RiskLevel,
 )
 from biomech_analyzer.core.exceptions import ReportError
-from biomech_analyzer.core.models import ParticipantResult, TrialResult
+from biomech_analyzer.core.models import ParticipantResult, ProfileComparison, TrialResult
 from biomech_analyzer.diagnostics.profile_comparison import REGIONS, region_status
 from biomech_analyzer.reporting import plots
 from biomech_analyzer.reporting.i18n import risk_label, tr
@@ -59,7 +58,14 @@ RULE = "#d5dde8"
 MUTED = "#6b7280"
 
 CONTENT_W = 17.8 * cm
-PLOT_W = 14.2 * cm
+PLOT_GRID_W = 8.6 * cm
+
+# closer_to → risk level used for cell colouring in the profile matrix
+_CLOSER_LEVEL = {
+    "control": RiskLevel.LOW,
+    "between": RiskLevel.MODERATE,
+    "aclr": RiskLevel.HIGH,
+}
 
 
 def _register_fonts() -> None:
@@ -197,36 +203,6 @@ def _risk_banner(text: str, level: RiskLevel, width: float) -> Table:
     return t
 
 
-def _trial_heading(trial: TrialResult, lang: str) -> Table:
-    """Navy section band with the trial name and its risk chip."""
-    level = trial.overall_risk
-    left = Paragraph(
-        f"{tr('report.trial', lang)} {trial.trial_id}",
-        ParagraphStyle(
-            "th", fontName="DejaVu-Bold", fontSize=9.5, leading=12,
-            textColor=colors.white,
-        ),
-    )
-    t = Table([[left, risk_label(level, lang)]], colWidths=[13.8 * cm, 4.0 * cm])
-    t.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(NAVY)),
-                ("BACKGROUND", (1, 0), (1, 0), colors.HexColor(RISK_BG_COLORS[level])),
-                ("TEXTCOLOR", (1, 0), (1, 0), colors.HexColor(RISK_COLORS[level])),
-                ("FONTNAME", (1, 0), (1, 0), "DejaVu-Bold"),
-                ("FONTSIZE", (1, 0), (1, 0), 9),
-                ("ALIGN", (1, 0), (1, 0), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ("LEFTPADDING", (0, 0), (0, 0), 10),
-            ]
-        )
-    )
-    return t
-
-
 def _fmt(value: float | None, digits: int = 3) -> str:
     return "-" if value is None else f"{value:.{digits}f}"
 
@@ -284,125 +260,160 @@ def _page_decorator(
     return draw
 
 
-def _trial_story(
-    trial: TrialResult, styles: dict, plot_dir: Path, include_plots: bool, lang: str
-) -> list:
-    story: list = [Spacer(1, 12)]
+def _tasks_in_order(result: ParticipantResult) -> list[str]:
+    tasks: list[str] = []
+    for trial in result.trials:
+        if trial.task.value not in tasks:
+            tasks.append(trial.task.value)
+    return tasks
 
-    # ---- section band + events/SSC table kept together --------------------
-    head: list = [_trial_heading(trial, lang), Spacer(1, 6)]
-    ev = trial.features.events
-    if ev is not None:
+
+def _events_table(result: ParticipantResult, lang: str) -> Table:
+    """All trials in one events table (rows = trials)."""
+    rows: list[list] = [[
+        tr("report.trial", lang),
+        tr("report.initial_contact", lang),
+        tr("report.takeoff", lang),
+        tr("report.peak_force", lang),
+        tr("report.stabilization", lang),
+        "SSC",
+    ]]
+    for trial in result.trials:
+        ev = trial.features.events
         ssc = trial.features.ssc_category
-        ssc_text = tr(f"ssc.{ssc}", lang) if ssc else "-"
-        head.append(
-            _table(
-                [
-                    [
-                        tr("report.initial_contact", lang),
-                        tr("report.takeoff", lang),
-                        tr("report.peak_force", lang),
-                        tr("report.stabilization", lang),
-                        "SSC",
-                    ],
-                    [
-                        _fmt(ev.initial_contact_s),
-                        _fmt(ev.takeoff_s),
-                        _fmt(ev.peak_force_s),
-                        _fmt(ev.stabilization_s),
-                        ssc_text,
-                    ],
-                ],
-                [3.6 * cm, 3.2 * cm, 4.2 * cm, 3.8 * cm, 3.0 * cm],
-            )
-        )
-    story.append(KeepTogether(head))
+        rows.append([
+            trial.trial_id,
+            _fmt(ev.initial_contact_s) if ev else "-",
+            _fmt(ev.takeoff_s) if ev else "-",
+            _fmt(ev.peak_force_s) if ev else "-",
+            _fmt(ev.stabilization_s) if ev else "-",
+            tr(f"ssc.{ssc}", lang) if ssc else "-",
+        ])
+    return _table(rows, [4.2 * cm, 2.6 * cm, 2.4 * cm, 3.4 * cm, 2.8 * cm, 2.4 * cm])
 
-    # ---- features (baseline z merged in) ----------------------------------
-    if trial.features.features:
-        story.append(Paragraph(tr("report.features", lang), styles["h2"]))
-        z_by_feature = {
-            c.feature: c.z_score
-            for c in trial.baseline_comparisons
-            if c.z_score is not None
-        }
-        headers = [tr("report.feature", lang), tr("report.value", lang),
-                   tr("report.unit", lang)]
-        widths = [9.8 * cm, 4.4 * cm, 3.6 * cm]
-        if z_by_feature:  # z column only when a normative baseline was given
-            headers.append(tr("report.zscore", lang))
-            widths = [8.6 * cm, 3.6 * cm, 2.8 * cm, 2.8 * cm]
-        rows = [headers]
+
+def _feature_matrix(trials: list[TrialResult], lang: str) -> Table:
+    """One table per task: rows = features, one value column per trial."""
+    names: list[str] = []
+    units: dict[str, str] = {}
+    for trial in trials:
         for fv in trial.features.features.values():
-            row = [fv.name, f"{fv.value:.4g}", fv.unit]
-            if z_by_feature:
-                z = z_by_feature.get(fv.name)
-                row.append("-" if z is None else f"{z:+.2f}")
-            rows.append(row)
-        story.append(_table(rows, widths))
+            if fv.name not in names:
+                names.append(fv.name)
+                units[fv.name] = fv.unit
+    header: list = [tr("report.feature", lang), tr("report.unit", lang)]
+    header += [t.condition.value for t in trials]
+    rows: list[list] = [header]
+    for name in names:
+        row: list = [_wrap(name), units[name]]
+        for trial in trials:
+            found = trial.features.features.get(name)
+            row.append("-" if found is None else f"{found.value:.4g}")
+        rows.append(row)
+    trial_w = (CONTENT_W - 7.6 * cm) / max(len(trials), 1)
+    widths = [5.8 * cm, 1.8 * cm] + [trial_w] * len(trials)
+    return _table(rows, widths)
 
-    # ---- literature profile comparison ------------------------------------
-    if trial.profile_comparisons:
-        story.append(Paragraph(tr("report.profile_comparison", lang), styles["h2"]))
-        rows = [[
-            tr("report.feature", lang),
-            tr("report.region", lang),
-            tr("report.value", lang),
-            f"{tr('report.control_short', lang)} (μ±σ)",
-            f"{tr('report.aclr_short', lang)} (μ±σ)",
-            tr("report.closer_to", lang),
-        ]]
-        closer_levels: list[RiskLevel] = []
+
+def _profile_matrix(trials: list[TrialResult], lang: str) -> Table | None:
+    """Literature comparison, all trials side by side; cells coloured by
+    the closer profile (green = control, orange = between, red = ACLR)."""
+    by_feature: dict[str, dict[str, ProfileComparison]] = {}
+    reference: dict[str, ProfileComparison] = {}
+    for trial in trials:
         for pc in trial.profile_comparisons:
-            closer_levels.append(
-                RiskLevel.LOW if pc.closer_to == "control"
-                else (RiskLevel.MODERATE if pc.closer_to == "between" else RiskLevel.HIGH)
+            by_feature.setdefault(pc.feature, {})[trial.trial_id] = pc
+            reference.setdefault(pc.feature, pc)
+    if not by_feature:
+        return None
+    header: list = [
+        tr("report.feature", lang),
+        f"{tr('report.control_short', lang)} (μ±σ)",
+        f"{tr('report.aclr_short', lang)} (μ±σ)",
+    ]
+    header += [t.condition.value for t in trials]
+    rows: list[list] = [header]
+    cell_cmds: list[tuple] = []
+    for r, (feature, per_trial) in enumerate(by_feature.items(), start=1):
+        ref = reference[feature]
+        row: list = [
+            _wrap(f"{feature} ({ref.unit})"),
+            f"{ref.control_mean:g} ± {ref.control_sd:g}",
+            f"{ref.aclr_mean:g} ± {ref.aclr_sd:g}",
+        ]
+        for c, trial in enumerate(trials, start=3):
+            found = per_trial.get(trial.trial_id)
+            if found is None:
+                row.append("-")
+                continue
+            row.append(f"{found.value:.4g}")
+            level = _CLOSER_LEVEL.get(found.closer_to, RiskLevel.MODERATE)
+            cell_cmds.append(
+                ("BACKGROUND", (c, r), (c, r), colors.HexColor(RISK_BG_COLORS[level]))
             )
-            rows.append(
-                [
-                    _wrap(pc.feature),
-                    tr(f"region_short.{pc.region}", lang),
-                    f"{pc.value:.4g} {pc.unit}",
-                    f"{pc.control_mean:g} ± {pc.control_sd:g} (z={pc.z_control:+.1f})",
-                    f"{pc.aclr_mean:g} ± {pc.aclr_sd:g} (z={pc.z_aclr:+.1f})",
-                    tr(f"closer.{pc.closer_to}", lang),
-                ]
+            cell_cmds.append(
+                ("TEXTCOLOR", (c, r), (c, r), colors.HexColor(RISK_COLORS[level]))
             )
-        table = _table(rows, [3.9 * cm, 1.6 * cm, 2.1 * cm, 3.6 * cm, 3.6 * cm, 3.0 * cm])
-        table.setStyle(TableStyle(_risk_cell_style(closer_levels)))
-        story.append(table)
+            cell_cmds.append(("FONTNAME", (c, r), (c, r), "DejaVu-Bold"))
+        rows.append(row)
+    trial_w = (CONTENT_W - 11.4 * cm) / max(len(trials), 1)
+    widths = [5.4 * cm, 3.0 * cm, 3.0 * cm] + [trial_w] * len(trials)
+    table = _table(rows, widths)
+    table.setStyle(TableStyle(cell_cmds))
+    return table
 
-    # ---- triggered risk indicators (table only, no prose) -----------------
-    triggered = [r for r in trial.risk_indicators if r.triggered]
-    if triggered:
-        story.append(Paragraph(tr("report.risk_indicators", lang), styles["h2"]))
-        rows = [[
-            tr("report.indicator", lang), tr("report.feature", lang),
-            tr("report.observed", lang), tr("report.reference", lang),
-            tr("report.level", lang),
-        ]]
-        levels = []
-        for r in triggered:
+
+def _indicator_table(result: ParticipantResult, lang: str) -> Table | None:
+    """All triggered risk indicators of all trials in one table."""
+    rows: list[list] = [[
+        tr("report.trial", lang), tr("report.indicator", lang),
+        tr("report.observed", lang), tr("report.reference", lang),
+        tr("report.level", lang),
+    ]]
+    levels: list[RiskLevel] = []
+    for trial in result.trials:
+        for r in trial.risk_indicators:
+            if not r.triggered:
+                continue
             name = r.name_tr if (lang == "tr" and r.name_tr) else r.name
-            rows.append([_wrap(name), _wrap(r.feature), _fmt(r.observed_value),
+            rows.append([trial.trial_id, _wrap(name), _fmt(r.observed_value),
                          _wrap(r.reference), risk_label(r.risk_level, lang)])
             levels.append(r.risk_level)
-        table = _table(rows, [4.6 * cm, 3.2 * cm, 2.2 * cm, 5.2 * cm, 2.6 * cm])
-        table.setStyle(TableStyle(_risk_cell_style(levels)))
-        story.append(table)
+    if not levels:
+        return None
+    table = _table(rows, [3.2 * cm, 4.8 * cm, 2.0 * cm, 5.2 * cm, 2.6 * cm])
+    table.setStyle(TableStyle(_risk_cell_style(levels)))
+    return table
 
-    if include_plots and trial.data is not None:
-        for maker in (plots.plot_fz_with_events, plots.plot_knee_flexion):
-            img_path = maker(trial.data, trial, plot_dir)
-            if img_path is not None:
-                story.append(Spacer(1, 8))
-                story.append(_scaled_image(img_path, PLOT_W))
-        z_path = plots.plot_zscores(trial, plot_dir)
-        if z_path is not None:
-            story.append(Spacer(1, 8))
-            story.append(_scaled_image(z_path, PLOT_W))
 
-    return story
+def _plot_grid(result: ParticipantResult, plot_dir: Path) -> Table | None:
+    """Fz/event plots for all trials, two per row."""
+    images: list[Image] = []
+    for trial in result.trials:
+        if trial.data is None:
+            continue
+        img_path = plots.plot_fz_with_events(trial.data, trial, plot_dir)
+        if img_path is not None:
+            images.append(_scaled_image(img_path, PLOT_GRID_W))
+    if not images:
+        return None
+    rows = [images[i:i + 2] for i in range(0, len(images), 2)]
+    if len(rows[-1]) == 1:
+        rows[-1].append("")
+    t = Table(rows, colWidths=[CONTENT_W / 2] * 2)
+    t.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    return t
 
 
 def generate_pdf_report(
@@ -433,7 +444,7 @@ def generate_pdf_report(
     # ---- findings summary (one row per trial) -----------------------------
     if result.trials:
         story.append(Paragraph(tr("report.trial_overview", lang), styles["h2"]))
-        rows = [[
+        rows: list[list] = [[
             tr("report.trial", lang), "SSC",
             tr("report.triggered_count", lang), tr("report.level", lang),
         ]]
@@ -469,10 +480,44 @@ def generate_pdf_report(
         table.setStyle(TableStyle(_risk_cell_style(levels)))
         story.append(table)
 
+    # ---- events, one row per trial ----------------------------------------
+    if any(t.features.events for t in result.trials):
+        story.append(Paragraph(tr("report.events", lang), styles["h2"]))
+        story.append(_events_table(result, lang))
+
+    # ---- feature matrix per task (rows = features, cols = trials) ---------
+    trials_by_task = {
+        task: [t for t in result.trials if t.task.value == task]
+        for task in _tasks_in_order(result)
+    }
+    for task, trials in trials_by_task.items():
+        if not any(t.features.features for t in trials):
+            continue
+        story.append(
+            Paragraph(f"{task} — {tr('report.features', lang)}", styles["h2"])
+        )
+        story.append(_feature_matrix(trials, lang))
+
+    # ---- literature profile matrix per task -------------------------------
+    for task, trials in trials_by_task.items():
+        table_or_none = _profile_matrix(trials, lang)
+        if table_or_none is None:
+            continue
+        story.append(
+            Paragraph(
+                f"{task} — {tr('report.profile_comparison', lang)}", styles["h2"]
+            )
+        )
+        story.append(table_or_none)
+
+    # ---- triggered risk indicators, all trials ----------------------------
+    indicator_table = _indicator_table(result, lang)
+    if indicator_table is not None:
+        story.append(Paragraph(tr("report.risk_indicators", lang), styles["h2"]))
+        story.append(indicator_table)
+
     with tempfile.TemporaryDirectory(prefix="biomech_plots_") as tmp:
         plot_dir = Path(tmp)
-        for trial in result.trials:
-            story.extend(_trial_story(trial, styles, plot_dir, include_plots, lang))
 
         # ---- ML output (compact) -----------------------------------------
         if result.ml_output:
@@ -493,6 +538,13 @@ def generate_pdf_report(
                 prob = ", ".join(f"{k}: {v}" for k, v in t.get("probabilities", {}).items())
                 rows.append([t.get("trial_id", "-"), t.get("prediction", "-"), prob])
             story.append(_table(rows, [4.0 * cm, 4.0 * cm, 9.8 * cm]))
+
+        # ---- Fz plots, two per row ---------------------------------------
+        if include_plots:
+            grid = _plot_grid(result, plot_dir)
+            if grid is not None:
+                story.append(Paragraph(tr("report.plots", lang), styles["h2"]))
+                story.append(grid)
 
         # ---- single-line footnote ----------------------------------------
         story.append(Spacer(1, 12))
