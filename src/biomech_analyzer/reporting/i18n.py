@@ -51,12 +51,10 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "report.unassigned": {"en": "Unassigned files", "tr": "Eşleştirilemeyen dosyalar"},
     "report.pending_note": {
-        "en": "Note: formulas and thresholds marked PENDING_BME_VALIDATION "
-              "are configurable placeholders awaiting confirmation by the "
-              "Biomedical Engineering team.",
-        "tr": "Not: PENDING_BME_VALIDATION olarak işaretlenen formül ve "
-              "eşikler, Biyomedikal Mühendisliği ekibinin onayını bekleyen "
-              "yapılandırılabilir yer tutuculardır.",
+        "en": "All formulas and thresholds are configurable and pending "
+              "Biomedical Engineering validation (PENDING_BME_VALIDATION).",
+        "tr": "Tüm formül ve eşikler yapılandırılabilirdir ve Biyomedikal "
+              "Mühendisliği onayı beklemektedir (PENDING_BME_VALIDATION).",
     },
     "report.trial": {"en": "Trial", "tr": "Deneme"},
     "report.events": {"en": "Event detection", "tr": "Olay tespiti"},
@@ -95,7 +93,13 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "report.control_profile": {"en": "Control profile", "tr": "Kontrol profili"},
     "report.aclr_profile": {"en": "ACLR profile", "tr": "ÖÇB profili"},
-    "report.closer_to": {"en": "Closer to", "tr": "Yakın olduğu profil"},
+    "report.closer_to": {"en": "Closer profile", "tr": "Yakın profil"},
+    "report.control_short": {"en": "Control", "tr": "Kontrol"},
+    "report.aclr_short": {"en": "ACLR", "tr": "ÖÇB"},
+    "region_short.knee": {"en": "Knee", "tr": "Diz"},
+    "region_short.hip": {"en": "Hip", "tr": "Kalça"},
+    "region_short.ankle": {"en": "Ankle", "tr": "A. bileği"},
+    "region_short.global": {"en": "Global", "tr": "Genel"},
     "report.region": {"en": "Region", "tr": "Bölge"},
     "report.risk_indicators": {
         "en": "Risk indicators (decision-support only)",
