@@ -157,6 +157,7 @@ class AdvancedSettingsScreen(QWidget):
         row2.addWidget(lb_btn)
         research_layout.addLayout(row2)
         self.train_btn = QPushButton("Train / evaluate / export model")
+        self.train_btn.setProperty("primary", True)
         self.train_btn.clicked.connect(self._train)
         research_layout.addWidget(self.train_btn)
         self.research_output = QPlainTextEdit()

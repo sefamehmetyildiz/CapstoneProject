@@ -45,6 +45,8 @@ def _fill_table(
     table.setHorizontalHeaderLabels(headers)
     table.setRowCount(len(rows))
     table.setAlternatingRowColors(True)
+    table.verticalHeader().setVisible(False)
+    table.horizontalHeader().setStretchLastSection(True)
     for r, row in enumerate(rows):
         for c, cell in enumerate(row):
             item = QTableWidgetItem(cell)
@@ -99,7 +101,7 @@ class ResultsReportScreen(QWidget):
         self.language_combo.addItem("Türkçe", "tr")
         actions.addWidget(self.language_combo)
         actions.addStretch(1)
-        self.report_btn = QPushButton("Generate PDF Report")
+        self.report_btn = QPushButton("📄  Generate PDF Report")
         self.report_btn.setProperty("primary", True)
         self.report_btn.clicked.connect(self._generate_report)
         actions.addWidget(self.report_btn)

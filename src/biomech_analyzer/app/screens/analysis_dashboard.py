@@ -66,7 +66,9 @@ class AnalysisDashboardScreen(QWidget):
         self.progress_bar.setRange(0, 1)
         layout.addWidget(self.progress_bar)
 
-        self.run_btn = QPushButton("Run Analysis")
+        self.run_btn = QPushButton("▶  Run Analysis")
+        self.run_btn.setProperty("primary", True)
+        self.run_btn.setMinimumHeight(40)
         self.run_btn.clicked.connect(self._run)
         layout.addWidget(self.run_btn)
 

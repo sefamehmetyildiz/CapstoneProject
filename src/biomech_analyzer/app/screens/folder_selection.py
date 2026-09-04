@@ -62,7 +62,8 @@ class FolderSelectionScreen(QWidget):
         form.addRow("Baseline file:", baseline_row)
         layout.addWidget(form_box)
 
-        self.validate_btn = QPushButton("Validate Files")
+        self.validate_btn = QPushButton("✓  Validate Files")
+        self.validate_btn.setProperty("primary", True)
         self.validate_btn.clicked.connect(self._validate)
         layout.addWidget(self.validate_btn)
 

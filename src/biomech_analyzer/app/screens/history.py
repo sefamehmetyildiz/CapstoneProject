@@ -143,6 +143,8 @@ class HistoryScreen(QWidget):
         self.table.setColumnCount(len(headers))
         self.table.setHorizontalHeaderLabels(headers)
         self.table.setRowCount(len(self._rows))
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(True)
         for r, row in enumerate(self._rows):
             try:
                 level = RiskLevel(str(row.get("overall_risk") or "LOW"))
